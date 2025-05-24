@@ -9,6 +9,19 @@ Run: python source/open3d_desktop_viewer_simple.py
 
 import argparse
 import json
+import sys
+import os
+from pathlib import Path
+
+# Fix import path for subprocess launches
+script_dir = Path(__file__).parent.absolute()
+project_root = script_dir.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+# Change working directory to project root for proper execution
+os.chdir(str(project_root))
+
 import open3d as o3d
 from source.viewer_core import ViewerCore, InteractiveControls, AnimationViewer, generate_sample_data
 

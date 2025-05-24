@@ -20,20 +20,21 @@ class DesktopLauncher:
             # Save data temporarily
             ply_path, config_path, temp_dir = FileManager.save_point_cloud(points, colors, config)
             
-            # Get simplified viewer script path
-            script_path = Path(__file__).parent / "open3d_desktop_viewer_simple.py"
+            # Get script paths (absolute)
+            script_path = Path(__file__).parent.absolute() / "open3d_desktop_viewer_simple.py"
+            project_root = Path(__file__).parent.parent.absolute()
             
-            # Build command
+            # Build command with absolute paths
             cmd = [
                 "python", str(script_path),
-                "--file", ply_path
+                "--file", str(ply_path)
             ]
             
-            # Launch in background
+            # Launch in background with correct working directory
             if os.name == 'nt':  # Windows
-                subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE, cwd=str(project_root))
             else:  # Unix/Linux/Mac
-                subprocess.Popen(cmd)
+                subprocess.Popen(cmd, cwd=str(project_root))
             
             return True, f"Desktop viewer launched with {len(points)} points"
             
@@ -47,21 +48,22 @@ class DesktopLauncher:
             # Save animation data
             temp_dir, config_path, ply_paths = FileManager.save_animation_frames(frames_data)
             
-            # Get simplified viewer script path
-            script_path = Path(__file__).parent / "open3d_desktop_viewer_simple.py"
+            # Get script paths (absolute)
+            script_path = Path(__file__).parent.absolute() / "open3d_desktop_viewer_simple.py"
+            project_root = Path(__file__).parent.parent.absolute()
             
-            # Build command for animation
+            # Build command for animation with absolute paths
             cmd = [
                 "python", str(script_path),
-                "--animation", config_path,
+                "--animation", str(config_path),
                 "--fps", str(fps)
             ]
             
-            # Launch in background
+            # Launch in background with correct working directory
             if os.name == 'nt':  # Windows
-                subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE, cwd=str(project_root))
             else:  # Unix/Linux/Mac
-                subprocess.Popen(cmd)
+                subprocess.Popen(cmd, cwd=str(project_root))
             
             return True, f"Animation viewer launched with {len(frames_data)} frames at {fps} FPS"
             
