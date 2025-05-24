@@ -400,15 +400,46 @@ class StreamlitInterface:
             if st.button("🎥 Export Video", type="primary", use_container_width=True):
                 st.session_state.export_requested = True
             
-            # Desktop viewer button
-            if st.button("🖥️ Desktop Viewer", use_container_width=True):
-                # Use FPS from settings
-                fps = st.session_state.animation_fps
-                success, message = DesktopLauncher.launch_animation_viewer(frames_data, fps)
-                if success:
-                    st.success("Animation viewer launched!")
-                else:
-                    st.error(message)
+            # Desktop viewer options - two choices
+            st.subheader("Desktop Viewers")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🖥️ File Viewer", use_container_width=True, help="Traditional file-based animation viewer"):
+                    # Use FPS from settings
+                    fps = st.session_state.animation_fps
+                    success, message = DesktopLauncher.launch_animation_viewer(frames_data, fps)
+                    if success:
+                        st.success("Animation viewer launched!")
+                    else:
+                        st.error(message)
+            
+            with col2:
+                if st.button("🎬 Interactive Player", use_container_width=True, help="Enhanced interactive animation player", type="secondary"):
+                    # Use FPS from settings
+                    fps = st.session_state.animation_fps
+                    with st.spinner("Starting interactive animation player..."):
+                        success, message = DesktopLauncher.launch_interactive_animation_player(frames_data, fps)
+                    if success:
+                        st.success("🎬 Interactive animation player completed!")
+                        st.info("💡 The interactive player provides smooth real-time controls like play/pause, speed control, frame stepping, and more!")
+                    else:
+                        st.error(message)
+            
+            # Help info for desktop viewers
+            with st.expander("ℹ️ Viewer Comparison", expanded=False):
+                st.markdown("**🖥️ File Viewer:**")
+                st.markdown("- Traditional viewer")
+                st.markdown("- Loads frames from files")
+                st.markdown("- Simple and reliable")
+                st.markdown("")
+                st.markdown("**🎬 Interactive Player:**")
+                st.markdown("- Enhanced with Open3D callbacks")
+                st.markdown("- Smooth real-time playback")
+                st.markdown("- **In-window controls** (SPACEBAR, N/P, etc.)")
+                st.markdown("- Variable speed, reverse, frame stepping")
+                st.markdown("- No file I/O overhead")
+                st.markdown("- Better for exploration and analysis")
         
         # Main area - visualization based on settings (no redundant controls)
         st.subheader("Animation Viewer")
@@ -575,20 +606,23 @@ class StreamlitInterface:
         # Settings hint
         st.markdown("💡 **New!** Click **⚙️ Settings & Preferences** in the sidebar to configure defaults for Load, Generate, and Animate operations.")
         
+        # Interactive animation highlight
+        st.markdown("🎬 **Enhanced!** New Interactive Animation Player with real-time controls, variable speed, frame stepping, and smooth Open3D callbacks!")
+        
         # Quick overview
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.subheader("🌐 Web Interface")
-            st.markdown("✅ Easy configuration\n✅ File uploads\n❌ Limited interactivity")
+            st.markdown("✅ Easy configuration\n✅ File uploads\n✅ Settings management\n❌ Limited interactivity")
         
         with col2:
             st.subheader("🖥️ Desktop Viewer")
-            st.markdown("✅ **Smooth rotation**\n✅ **Professional lighting**\n✅ **Screenshot capture**")
+            st.markdown("✅ **Smooth rotation**\n✅ **Professional lighting**\n✅ **Screenshot capture**\n✅ **File-based animation**")
         
         with col3:
-            st.subheader("🎬 Animation")
-            st.markdown("✅ **Folder loading**\n✅ **Video export**\n✅ **Animated playback**")
+            st.subheader("🎬 Interactive Player")
+            st.markdown("✅ **Real-time animation**\n✅ **Variable speed control**\n✅ **Frame stepping**\n✅ **Reverse playback**\n✅ **Live interaction**")
 
 
 def main():
