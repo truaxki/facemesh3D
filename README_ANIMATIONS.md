@@ -95,7 +95,10 @@ animations/
 ### Web Interface (Streamlit)
 1. Run: `python main.py`
 2. Select "🎬 Animation Folder" in sidebar
-3. Enter folder path (e.g., `C:\path\to\animations\torus_y_24`)
+3. **NEW**: Interface defaults to `animations/` folder automatically!
+   - Available animation subfolders are shown in a dropdown
+   - Quick-select from: `torus_y_24`, `helix_z_36`, `sphere_x_30`, etc.
+   - Or manually enter custom path: `C:\path\to\your\animation\folder`
 4. Use frame slider or auto-play
 5. Export MP4 videos
 
