@@ -1,0 +1,12 @@
+{
+  "type": "facial_landmark_animation",
+  "source_file": "e4-baseline.csv",
+  "total_frames": 10,
+  "saved_frames": 10,
+  "color_mode": "movement",
+  "landmarks_count": 478,
+  "subject": "e26",
+  "test": "baseline",
+  "duration_seconds": 9.0,
+  "created_timestamp": 1748130781.8649995
+}

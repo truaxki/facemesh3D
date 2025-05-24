@@ -2,6 +2,7 @@
 
 Handles all file I/O operations for point clouds.
 Supports PLY, PCD, XYZ, and CSV formats with proper error handling.
+Enhanced with facial landmark time series CSV support.
 """
 
 import os
@@ -77,10 +78,40 @@ class FileManager:
     
     @staticmethod
     def _load_csv(uploaded_file):
-        """Load CSV file with X,Y,Z and optional R,G,B columns."""
+        """Load CSV file - detect format and handle appropriately."""
         content = StringIO(uploaded_file.getvalue().decode('utf-8'))
         df = pd.read_csv(content)
         
+        # Check if this is a facial landmark time series CSV
+        if FileManager._is_facial_landmark_csv(df):
+            # For time series data, we'll return the first frame as preview
+            # and provide info about the full dataset
+            frames_data = FileManager._parse_facial_landmark_csv(df)
+            if frames_data:
+                return frames_data[0]['points'], frames_data[0]['colors']
+            else:
+                raise ValueError("No valid frames found in facial landmark CSV")
+        else:
+            # Standard X,Y,Z CSV format
+            return FileManager._load_standard_csv(df)
+    
+    @staticmethod
+    def _is_facial_landmark_csv(df):
+        """Check if CSV contains facial landmark data (feat_N_x, feat_N_y, feat_N_z pattern)."""
+        columns = df.columns.tolist()
+        
+        # Look for facial landmark pattern: feat_0_x, feat_0_y, feat_0_z, etc.
+        feat_x_cols = [col for col in columns if col.startswith('feat_') and col.endswith('_x')]
+        feat_y_cols = [col for col in columns if col.startswith('feat_') and col.endswith('_y')]
+        feat_z_cols = [col for col in columns if col.startswith('feat_') and col.endswith('_z')]
+        
+        # Must have at least 10 facial landmarks and matching x,y,z columns
+        return (len(feat_x_cols) >= 10 and 
+                len(feat_x_cols) == len(feat_y_cols) == len(feat_z_cols))
+    
+    @staticmethod
+    def _load_standard_csv(df):
+        """Load standard CSV file with X,Y,Z and optional R,G,B columns."""
         if len(df.columns) < 3:
             raise ValueError("CSV must have at least 3 columns (X, Y, Z)")
         
@@ -93,6 +124,257 @@ class FileManager:
                 colors = colors / 255.0
         
         return points, colors
+    
+    @staticmethod
+    def _parse_facial_landmark_csv(df, color_mode='movement'):
+        """Parse facial landmark CSV into frame data."""
+        columns = df.columns.tolist()
+        
+        # Find all feature indices
+        feat_x_cols = sorted([col for col in columns if col.startswith('feat_') and col.endswith('_x')])
+        feat_indices = []
+        
+        for x_col in feat_x_cols:
+            # Extract feature number from feat_N_x format
+            feat_num = x_col.replace('feat_', '').replace('_x', '')
+            try:
+                feat_idx = int(feat_num)
+                feat_indices.append(feat_idx)
+            except ValueError:
+                continue
+        
+        feat_indices = sorted(feat_indices)
+        print(f"📊 Found {len(feat_indices)} facial landmarks (feat_0 to feat_{max(feat_indices)})")
+        
+        frames_data = []
+        
+        for row_idx, row in df.iterrows():
+            points = []
+            movement_data = []
+            
+            # Extract x,y,z coordinates and movement data for each feature
+            for feat_idx in feat_indices:
+                x_col = f'feat_{feat_idx}_x'
+                y_col = f'feat_{feat_idx}_y'
+                z_col = f'feat_{feat_idx}_z'
+                
+                # Movement difference columns
+                xdiff_col = f'feat_{feat_idx}_xdiff'
+                ydiff_col = f'feat_{feat_idx}_ydiff'
+                zdiff_col = f'feat_{feat_idx}_zdiff'
+                
+                if x_col in columns and y_col in columns and z_col in columns:
+                    x = row[x_col]
+                    y = row[y_col]
+                    z = row[z_col]
+                    
+                    # Skip invalid points
+                    if pd.notna(x) and pd.notna(y) and pd.notna(z):
+                        points.append([x, y, z])
+                        
+                        # Extract movement data if available
+                        movement = {'xdiff': 0, 'ydiff': 0, 'zdiff': 0}
+                        if xdiff_col in columns and pd.notna(row[xdiff_col]):
+                            movement['xdiff'] = row[xdiff_col]
+                        if ydiff_col in columns and pd.notna(row[ydiff_col]):
+                            movement['ydiff'] = row[ydiff_col]
+                        if zdiff_col in columns and pd.notna(row[zdiff_col]):
+                            movement['zdiff'] = row[zdiff_col]
+                        
+                        movement_data.append(movement)
+            
+            if len(points) > 0:
+                points = np.array(points)
+                
+                # Generate colors based on mode
+                colors = FileManager._generate_facial_colors(points, feat_indices, color_mode, movement_data)
+                
+                # Get timestamp if available
+                timestamp = row.get('Time (s)', row_idx)
+                
+                frames_data.append({
+                    'points': points,
+                    'colors': colors,
+                    'timestamp': timestamp,
+                    'frame_index': row_idx,
+                    'movement_data': movement_data
+                })
+        
+        print(f"✅ Parsed {len(frames_data)} frames from facial landmark data")
+        return frames_data
+    
+    @staticmethod
+    def _generate_facial_colors(points, feat_indices, color_mode='movement', movement_data=None):
+        """Generate colors for facial landmark points."""
+        num_points = len(points)
+        
+        if color_mode == 'movement' and movement_data:
+            # Color by movement intensity (cool blue=static, hot red=high movement)
+            movement_intensities = []
+            
+            for move_data in movement_data:
+                # Calculate 3D movement magnitude
+                xdiff = move_data.get('xdiff', 0)
+                ydiff = move_data.get('ydiff', 0)
+                zdiff = move_data.get('zdiff', 0)
+                
+                # Calculate movement magnitude (Euclidean distance)
+                intensity = np.sqrt(xdiff**2 + ydiff**2 + zdiff**2)
+                movement_intensities.append(intensity)
+            
+            movement_intensities = np.array(movement_intensities)
+            
+            # Normalize movement intensities
+            if np.max(movement_intensities) > 0:
+                # Use percentile-based normalization to handle outliers
+                p95 = np.percentile(movement_intensities, 95)
+                movement_norm = np.clip(movement_intensities / p95, 0, 1)
+            else:
+                movement_norm = np.zeros_like(movement_intensities)
+            
+            # Create heat map colors: blue (static) -> green -> yellow -> red (high movement)
+            colors = np.zeros((num_points, 3))
+            
+            for i, intensity in enumerate(movement_norm):
+                if intensity < 0.25:  # Very low movement - blue to cyan
+                    colors[i] = [0, intensity*4, 1.0]
+                elif intensity < 0.5:  # Low movement - cyan to green
+                    t = (intensity - 0.25) * 4
+                    colors[i] = [0, 1.0, 1.0 - t]
+                elif intensity < 0.75:  # Medium movement - green to yellow
+                    t = (intensity - 0.5) * 4
+                    colors[i] = [t, 1.0, 0]
+                else:  # High movement - yellow to red
+                    t = (intensity - 0.75) * 4
+                    colors[i] = [1.0, 1.0 - t, 0]
+            
+            print(f"🎨 Movement intensity range: {np.min(movement_intensities):.4f} to {np.max(movement_intensities):.4f}")
+            
+        elif color_mode == 'depth':
+            # Color by Z depth (blue=close, red=far)
+            z_values = points[:, 2]
+            z_min, z_max = np.min(z_values), np.max(z_values)
+            if z_max > z_min:
+                z_norm = (z_values - z_min) / (z_max - z_min)
+            else:
+                z_norm = np.ones_like(z_values) * 0.5
+            
+            colors = np.zeros((num_points, 3))
+            colors[:, 0] = z_norm        # Red for far
+            colors[:, 2] = 1.0 - z_norm  # Blue for close
+            colors[:, 1] = 0.3           # Slight green tint
+            
+        elif color_mode == 'regions':
+            # Color by facial regions (simplified MediaPipe face mesh regions)
+            colors = np.zeros((num_points, 3))
+            
+            for i, feat_idx in enumerate(feat_indices):
+                if feat_idx < 17:  # Face contour
+                    colors[i] = [1.0, 0.8, 0.6]  # Skin tone
+                elif feat_idx < 27:  # Right eyebrow  
+                    colors[i] = [0.6, 0.4, 0.2]  # Brown
+                elif feat_idx < 36:  # Left eyebrow
+                    colors[i] = [0.6, 0.4, 0.2]  # Brown
+                elif feat_idx < 42:  # Right eye
+                    colors[i] = [0.2, 0.6, 1.0]  # Blue
+                elif feat_idx < 48:  # Left eye
+                    colors[i] = [0.2, 0.6, 1.0]  # Blue
+                elif feat_idx < 68:  # Mouth
+                    colors[i] = [1.0, 0.4, 0.4]  # Red/pink
+                else:  # Other features
+                    colors[i] = [0.8, 0.8, 0.8]  # Light gray
+                    
+        elif color_mode == 'single':
+            # Single color for all points
+            colors = np.ones((num_points, 3)) * [0.7, 0.7, 0.9]  # Light blue-gray
+            
+        else:  # Default to movement if data available, otherwise depth
+            if movement_data:
+                colors = FileManager._generate_facial_colors(points, feat_indices, 'movement', movement_data)
+            else:
+                colors = FileManager._generate_facial_colors(points, feat_indices, 'depth')
+        
+        return colors
+    
+    @staticmethod
+    def create_facial_animation_folder(uploaded_file, folder_name=None, color_mode='movement', max_frames=None):
+        """Create animation folder from facial landmark CSV."""
+        try:
+            # Parse the CSV
+            content = StringIO(uploaded_file.getvalue().decode('utf-8'))
+            df = pd.read_csv(content)
+            
+            if not FileManager._is_facial_landmark_csv(df):
+                raise ValueError("CSV does not contain facial landmark data")
+            
+            frames_data = FileManager._parse_facial_landmark_csv(df, color_mode)
+            
+            if max_frames and len(frames_data) > max_frames:
+                # Subsample frames evenly
+                indices = np.linspace(0, len(frames_data)-1, max_frames, dtype=int)
+                frames_data = [frames_data[i] for i in indices]
+                print(f"📊 Subsampled to {len(frames_data)} frames")
+            
+            # Generate folder name if not provided
+            if not folder_name:
+                base_name = uploaded_file.name.replace('.csv', '')
+                subject = df.iloc[0].get('Subject Name', 'unknown') if 'Subject Name' in df.columns else 'unknown'
+                test = df.iloc[0].get('Test Name', 'baseline') if 'Test Name' in df.columns else 'baseline'
+                folder_name = f"facemesh_{subject}_{test}_{len(frames_data)}frames"
+            
+            # Create animation folder
+            animations_dir = Path("animations")
+            animations_dir.mkdir(exist_ok=True)
+            
+            folder_path = animations_dir / folder_name
+            folder_path.mkdir(exist_ok=True)
+            
+            # Save each frame as PLY
+            saved_frames = 0
+            for frame_data in frames_data:
+                timestamp = frame_data['timestamp']
+                frame_idx = frame_data['frame_index']
+                
+                # Create filename with timestamp
+                if isinstance(timestamp, (int, float)):
+                    filename = f"frame_{frame_idx:04d}_t{timestamp:.3f}s.ply"
+                else:
+                    filename = f"frame_{frame_idx:04d}.ply"
+                
+                ply_path = folder_path / filename
+                
+                # Create and save point cloud
+                pcd = FileManager.create_point_cloud(frame_data['points'], frame_data['colors'])
+                success = o3d.io.write_point_cloud(str(ply_path), pcd)
+                
+                if success:
+                    saved_frames += 1
+            
+            # Create metadata file
+            metadata = {
+                'type': 'facial_landmark_animation',
+                'source_file': uploaded_file.name,
+                'total_frames': int(len(frames_data)),
+                'saved_frames': int(saved_frames),
+                'color_mode': color_mode,
+                'landmarks_count': int(len(frames_data[0]['points'])) if frames_data else 0,
+                'subject': str(df.iloc[0].get('Subject Name', 'unknown')) if 'Subject Name' in df.columns else 'unknown',
+                'test': str(df.iloc[0].get('Test Name', 'baseline')) if 'Test Name' in df.columns else 'baseline',
+                'duration_seconds': float(df.iloc[-1].get('Time (s)', len(frames_data))) if 'Time (s)' in df.columns else float(len(frames_data)),
+                'created_timestamp': time.time()
+            }
+            
+            metadata_path = folder_path / "metadata.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            print(f"✅ Created facial animation: {folder_path}")
+            print(f"📊 {saved_frames} frames saved")
+            
+            return str(folder_path), saved_frames, metadata
+            
+        except Exception as e:
+            raise RuntimeError(f"Error creating facial animation folder: {str(e)}")
     
     @staticmethod
     def _load_binary_file(uploaded_file):

@@ -111,15 +111,17 @@ class StreamlitInterface:
             # Data source selection
             data_source = st.selectbox(
                 "Data Source",
-                ["Generate", "Upload File", "Animation Folder"]
+                ["Generate", "Upload File", "Animation Folder", "Facial Landmark CSV"]
             )
             
             if data_source == "Generate":
                 self.render_generation_controls()
             elif data_source == "Upload File":
                 self.render_upload_controls()
-            else:  # Animation Folder
+            elif data_source == "Animation Folder":
                 self.render_animation_controls()
+            else:  # Facial Landmark CSV
+                self.render_facial_csv_controls()
     
     def render_sidebar_settings(self):
         """Render organized settings panel in sidebar by functional area."""
@@ -584,6 +586,157 @@ class StreamlitInterface:
         finally:
             st.session_state.export_requested = False
     
+    def render_facial_csv_controls(self):
+        """Render facial landmark CSV import controls."""
+        st.subheader("🎭 Facial Landmark CSV Import")
+        st.markdown("Import time series facial landmark data (feat_N_x, feat_N_y, feat_N_z format)")
+        
+        uploaded_file = st.file_uploader(
+            "Choose facial landmark CSV file",
+            type=['csv'],
+            help="CSV with feat_0_x, feat_0_y, feat_0_z... columns and Time (s) column"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Preview the file structure
+                content = uploaded_file.getvalue().decode('utf-8')
+                lines = content.split('\n')
+                
+                st.markdown("**📋 File Preview:**")
+                st.code(f"Filename: {uploaded_file.name}")
+                st.code(f"Size: {len(uploaded_file.getvalue())} bytes")
+                st.code(f"Lines: {len(lines)}")
+                
+                # Check if it's a valid facial landmark CSV
+                from io import StringIO
+                import pandas as pd
+                df = pd.read_csv(StringIO(content))
+                
+                if FileManager._is_facial_landmark_csv(df):
+                    # Extract info
+                    feat_cols = [col for col in df.columns if col.startswith('feat_') and col.endswith('_x')]
+                    num_landmarks = len(feat_cols)
+                    num_frames = len(df)
+                    
+                    # Show file info
+                    st.success(f"✅ Valid facial landmark CSV detected!")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Landmarks", num_landmarks)
+                    with col2:
+                        st.metric("Frames", num_frames)
+                    with col3:
+                        duration = df.iloc[-1].get('Time (s)', num_frames) if 'Time (s)' in df.columns else num_frames
+                        st.metric("Duration", f"{duration:.1f}s")
+                    
+                    # Import options
+                    st.markdown("**🎨 Import Options:**")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        color_mode = st.selectbox(
+                            "Color Mode",
+                            ["movement", "depth", "regions", "single"],
+                            index=0,
+                            help="movement = Color by motion intensity (recommended)\n"
+                                 "depth = Color by Z distance\n"
+                                 "regions = Color by facial regions\n"
+                                 "single = Single color for all points"
+                        )
+                    
+                    with col2:
+                        max_frames = st.number_input(
+                            "Max Frames (0 = all)",
+                            min_value=0,
+                            max_value=num_frames,
+                            value=min(200, num_frames),
+                            help="Limit frames for faster processing (0 = use all frames)"
+                        )
+                    
+                    # Folder naming
+                    subject = df.iloc[0].get('Subject Name', 'unknown') if 'Subject Name' in df.columns else 'unknown'
+                    test = df.iloc[0].get('Test Name', 'baseline') if 'Test Name' in df.columns else 'baseline'
+                    actual_frames = max_frames if max_frames > 0 else num_frames
+                    default_name = f"facemesh_{subject}_{test}_{actual_frames}frames"
+                    
+                    folder_name = st.text_input(
+                        "Animation Folder Name",
+                        value=default_name,
+                        help="Name for the new animation folder in /animations/"
+                    )
+                    
+                    # Create animation button
+                    if st.button("🎬 Create Facial Animation", type="primary", use_container_width=True):
+                        with st.spinner("Converting facial landmarks to animation..."):
+                            try:
+                                folder_path, saved_frames, metadata = FileManager.create_facial_animation_folder(
+                                    uploaded_file, 
+                                    folder_name=folder_name,
+                                    color_mode=color_mode,
+                                    max_frames=max_frames if max_frames > 0 else None
+                                )
+                                
+                                st.success(f"🎉 Animation created successfully!")
+                                st.info(f"📁 Folder: {folder_path}")
+                                st.info(f"📊 Frames saved: {saved_frames}")
+                                
+                                # Show metadata
+                                with st.expander("📋 Animation Details", expanded=True):
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.write(f"**Subject:** {metadata['subject']}")
+                                        st.write(f"**Test:** {metadata['test']}")
+                                        st.write(f"**Landmarks:** {metadata['landmarks_count']}")
+                                    with col2:
+                                        st.write(f"**Color Mode:** {metadata['color_mode']}")
+                                        st.write(f"**Duration:** {metadata['duration_seconds']:.1f}s")
+                                        st.write(f"**Source:** {metadata['source_file']}")
+                                
+                                # Auto-load the animation
+                                frames_data = FileManager.load_animation_folder(folder_path)
+                                st.session_state.frames_data = frames_data
+                                st.session_state.config = {
+                                    'source': 'facial_landmark_csv',
+                                    'folder_path': folder_path,
+                                    'metadata': metadata
+                                }
+                                
+                                st.balloons()
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error creating animation: {str(e)}")
+                    
+                    # Preview first frame
+                    if st.checkbox("👁️ Preview First Frame", value=False):
+                        with st.spinner("Loading preview..."):
+                            try:
+                                frames_data = FileManager._parse_facial_landmark_csv(df, color_mode)
+                                if frames_data:
+                                    points = frames_data[0]['points']
+                                    colors = frames_data[0]['colors']
+                                    
+                                    st.session_state.points = points
+                                    st.session_state.colors = colors
+                                    st.session_state.config = {
+                                        'source': 'facial_preview',
+                                        'num_points': len(points),
+                                        'color_mode': color_mode
+                                    }
+                                    st.success(f"✅ Preview loaded: {len(points)} facial landmarks")
+                                    
+                            except Exception as e:
+                                st.error(f"❌ Preview error: {str(e)}")
+                
+                else:
+                    st.warning("⚠️ This doesn't appear to be a facial landmark CSV file.")
+                    st.info("Expected format: feat_0_x, feat_0_y, feat_0_z, feat_1_x, feat_1_y, feat_1_z, ...")
+                    
+            except Exception as e:
+                st.error(f"❌ Error reading CSV: {str(e)}")
+    
     def run(self):
         """Main application entry point."""
         st.title("Open3D Desktop Launcher")
@@ -606,21 +759,28 @@ class StreamlitInterface:
         # Settings hint
         st.markdown("💡 **New!** Click **⚙️ Settings & Preferences** in the sidebar to configure defaults for Load, Generate, and Animate operations.")
         
+        # Facial landmark highlight
+        st.markdown("🎭 **NEW!** Facial Landmark CSV Import - Convert time series facial data into stunning 3D animations with movement intensity coloring!")
+        
         # Interactive animation highlight
         st.markdown("🎬 **Enhanced!** New Interactive Animation Player with real-time controls, variable speed, frame stepping, and smooth Open3D callbacks!")
         
         # Quick overview
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.subheader("🌐 Web Interface")
             st.markdown("✅ Easy configuration\n✅ File uploads\n✅ Settings management\n❌ Limited interactivity")
         
         with col2:
+            st.subheader("🎭 Facial Data")
+            st.markdown("✅ **CSV time series import**\n✅ **Movement intensity colors**\n✅ **478 landmark support**\n✅ **Auto-animation creation**")
+        
+        with col3:
             st.subheader("🖥️ Desktop Viewer")
             st.markdown("✅ **Smooth rotation**\n✅ **Professional lighting**\n✅ **Screenshot capture**\n✅ **File-based animation**")
         
-        with col3:
+        with col4:
             st.subheader("🎬 Interactive Player")
             st.markdown("✅ **Real-time animation**\n✅ **Variable speed control**\n✅ **Frame stepping**\n✅ **Reverse playback**\n✅ **Live interaction**")
 
