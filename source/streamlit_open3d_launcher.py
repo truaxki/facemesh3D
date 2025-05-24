@@ -326,7 +326,9 @@ class Open3DLauncher:
             auto_play = st.checkbox("Auto Play")
         with col3:
             if st.button("🎥 Export Video"):
-                self.export_animation_video(frames_data, fps)
+                st.session_state.export_video_requested = True
+                st.session_state.video_export_frames = frames_data
+                st.session_state.video_export_fps = fps
         
         # Display current frame
         current_frame = frames_data[frame_idx]
@@ -368,62 +370,89 @@ class Open3DLauncher:
             st.session_state.animation_frame = (st.session_state.animation_frame + 1) % len(frames_data)
             time.sleep(1.0 / fps)
             st.rerun()
+        
+        # Handle video export request (outside columns to avoid nesting issues)
+        if st.session_state.get('export_video_requested', False):
+            st.session_state.export_video_requested = False  # Reset flag
+            frames_to_export = st.session_state.get('video_export_frames', frames_data)
+            fps_to_use = st.session_state.get('video_export_fps', fps)
+            self.export_animation_video(frames_to_export, fps_to_use)
     
     def export_animation_video(self, frames_data, fps=5):
-        """Export animation as MP4 video."""
+        """Export animation as MP4 video with enhanced error handling and verification."""
         try:
-            with st.spinner("Creating animation video..."):
+            with st.spinner("🎬 Creating animation video..."):
                 # Create temp directory for frames
                 temp_dir = tempfile.mkdtemp(prefix="animation_")
-                
                 st.info(f"🎬 Creating video with {len(frames_data)} frames at {fps} FPS...")
+                st.info(f"📁 Working directory: {temp_dir}")
                 
-                # Generate frame images
+                # Generate frame images with better progress tracking
                 frame_paths = []
                 progress_bar = st.progress(0)
+                status_text = st.empty()
                 
                 for i, frame_data in enumerate(frames_data):
                     points = frame_data['points']
                     colors = frame_data['colors']
                     
-                    # Update progress
-                    progress_bar.progress((i + 1) / len(frames_data))
+                    # Update progress with more detail
+                    progress = (i + 1) / len(frames_data)
+                    progress_bar.progress(progress)
+                    status_text.text(f"Rendering frame {i+1}/{len(frames_data)} ({progress*100:.1f}%)")
                     
-                    fig = plt.figure(figsize=(10, 8), facecolor='black')
+                    # Create matplotlib figure with better settings
+                    fig = plt.figure(figsize=(12, 9), facecolor='black', dpi=100)
                     ax = fig.add_subplot(111, projection='3d', facecolor='black')
                     
                     if colors is not None:
                         ax.scatter(points[:, 0], points[:, 1], points[:, 2], 
-                                  c=colors, s=2, alpha=0.8)
+                                  c=colors, s=3, alpha=0.8, edgecolors='none')
                     else:
                         ax.scatter(points[:, 0], points[:, 1], points[:, 2], 
-                                  c=points[:, 2], cmap='viridis', s=2, alpha=0.8)
+                                  c=points[:, 2], cmap='viridis', s=3, alpha=0.8, edgecolors='none')
                     
-                    ax.set_xlabel('X', color='white')
-                    ax.set_ylabel('Y', color='white')
-                    ax.set_zlabel('Z', color='white')
-                    ax.tick_params(colors='white')
-                    ax.set_title(f'Frame {i+1}/{len(frames_data)}', color='white')
+                    # Styling
+                    ax.set_xlabel('X', color='white', fontsize=12)
+                    ax.set_ylabel('Y', color='white', fontsize=12)
+                    ax.set_zlabel('Z', color='white', fontsize=12)
+                    ax.tick_params(colors='white', labelsize=10)
+                    ax.set_title(f'Frame {i+1}/{len(frames_data)} | {len(points)} points', 
+                               color='white', fontsize=14, pad=20)
                     
-                    # Equal aspect ratio
-                    all_points = np.vstack([f['points'] for f in frames_data])
-                    max_range = np.max(np.ptp(all_points, axis=0)) / 2
-                    mid = np.mean(all_points, axis=0)
-                    ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
-                    ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
-                    ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
+                    # Equal aspect ratio (compute once for efficiency)
+                    if i == 0:  # Only compute on first frame
+                        all_points = np.vstack([f['points'] for f in frames_data])
+                        max_range = np.max(np.ptp(all_points, axis=0)) / 2 * 1.1  # Add 10% margin
+                        mid = np.mean(all_points, axis=0)
+                        xlim = [mid[0] - max_range, mid[0] + max_range]
+                        ylim = [mid[1] - max_range, mid[1] + max_range] 
+                        zlim = [mid[2] - max_range, mid[2] + max_range]
                     
+                    ax.set_xlim(xlim)
+                    ax.set_ylim(ylim)
+                    ax.set_zlim(zlim)
+                    
+                    # Save frame with high quality
                     frame_path = os.path.join(temp_dir, f"frame_{i:04d}.png")
-                    plt.savefig(frame_path, dpi=100, bbox_inches='tight', facecolor='black')
+                    plt.savefig(frame_path, dpi=100, bbox_inches='tight', 
+                              facecolor='black', edgecolor='none', 
+                              format='png')
                     plt.close()
+                    
+                    # Verify frame was created
+                    if not os.path.exists(frame_path) or os.path.getsize(frame_path) < 1000:
+                        raise ValueError(f"Frame {i+1} failed to render properly")
                     
                     frame_paths.append(frame_path)
                 
                 progress_bar.empty()
-                st.success("✅ All frames rendered!")
+                status_text.empty()
+                st.success(f"✅ All {len(frame_paths)} frames rendered successfully!")
                 
-                # Create video using OpenCV with better codec compatibility
-                video_path = os.path.join(temp_dir, "animation.mp4")
+                # Verify all frames before video creation
+                total_frame_size = sum(os.path.getsize(fp) for fp in frame_paths)
+                st.info(f"📊 Frame data: {total_frame_size / (1024*1024):.1f} MB total")
                 
                 # Read first frame to get dimensions
                 first_frame = cv2.imread(frame_paths[0])
@@ -431,91 +460,180 @@ class Open3DLauncher:
                     raise ValueError("Could not read first frame image")
                 
                 height, width, layers = first_frame.shape
+                st.info(f"🖼️ Video resolution: {width}x{height}")
                 
-                # Try multiple codecs for better compatibility
+                # Try multiple codecs with enhanced error handling
                 codecs_to_try = [
-                    ('mp4v', '.mp4'),  # MP4V - widely supported
-                    ('XVID', '.avi'),  # XVID - fallback option
-                    ('MJPG', '.avi'),  # Motion JPEG - universal fallback
+                    ('mp4v', '.mp4', 'MP4V - Standard MP4'),
+                    ('XVID', '.avi', 'XVID - AVI format'),
+                    ('MJPG', '.avi', 'Motion JPEG - Universal'),
+                    ('H264', '.mp4', 'H264 - High quality')
                 ]
                 
                 video_created = False
                 final_video_path = None
+                codec_results = []
                 
-                for codec, ext in codecs_to_try:
+                for codec, ext, description in codecs_to_try:
+                    codec_status = st.empty()
                     try:
                         test_path = os.path.join(temp_dir, f"animation{ext}")
+                        codec_status.info(f"🔄 Trying {description}...")
+                        
                         fourcc = cv2.VideoWriter_fourcc(*codec)
                         video = cv2.VideoWriter(test_path, fourcc, fps, (width, height))
                         
                         if not video.isOpened():
                             video.release()
+                            codec_results.append(f"❌ {codec}: Writer failed to open")
+                            codec_status.warning(f"⚠️ {codec} codec failed to initialize")
                             continue
                         
-                        st.info(f"📹 Encoding video with {codec} codec...")
+                        # Write all frames with progress
+                        codec_status.info(f"📹 Encoding with {codec}...")
                         
-                        # Write all frames
-                        for frame_path in frame_paths:
+                        for j, frame_path in enumerate(frame_paths):
                             frame = cv2.imread(frame_path)
                             if frame is not None:
                                 video.write(frame)
+                            else:
+                                video.release()
+                                raise ValueError(f"Could not read frame {j+1}")
                         
                         video.release()
                         
-                        # Verify the video file was created and has size > 0
-                        if os.path.exists(test_path) and os.path.getsize(test_path) > 1000:
-                            final_video_path = test_path
-                            video_created = True
-                            st.success(f"✅ Video created successfully with {codec} codec!")
-                            break
+                        # Verify the video file
+                        if os.path.exists(test_path):
+                            file_size = os.path.getsize(test_path)
+                            if file_size > 5000:  # Minimum reasonable video size
+                                final_video_path = test_path
+                                video_created = True
+                                codec_status.success(f"✅ Success with {codec}! ({file_size / (1024*1024):.1f} MB)")
+                                codec_results.append(f"✅ {codec}: Success ({file_size} bytes)")
+                                break
+                            else:
+                                codec_results.append(f"⚠️ {codec}: File too small ({file_size} bytes)")
+                                codec_status.warning(f"⚠️ {codec} produced small file, trying next...")
                         else:
-                            st.warning(f"⚠️ {codec} codec produced empty file, trying next...")
+                            codec_results.append(f"❌ {codec}: No file created")
+                            codec_status.warning(f"⚠️ {codec} failed to create file")
                             
                     except Exception as e:
-                        st.warning(f"⚠️ {codec} codec failed: {e}")
+                        codec_results.append(f"❌ {codec}: {str(e)}")
+                        codec_status.error(f"❌ {codec} error: {e}")
                         continue
+                    finally:
+                        codec_status.empty()
                 
                 if not video_created:
-                    raise RuntimeError("All video codecs failed. Your system may not have proper codec support.")
+                    # Show detailed codec results
+                    st.error("❌ All video codecs failed!")
+                    with st.expander("🔍 Codec Test Results"):
+                        for result in codec_results:
+                            st.text(result)
+                    raise RuntimeError("All video codecs failed. See details above.")
                 
-                # Offer download
+                # Enhanced download with verification
+                st.success("🎉 Video encoding complete!")
+                
                 with open(final_video_path, "rb") as f:
                     video_data = f.read()
                     
                     if len(video_data) == 0:
                         raise ValueError("Video file is empty")
                     
-                    # Determine file extension and MIME type
+                    # Determine file type and create download
                     file_ext = os.path.splitext(final_video_path)[1]
                     if file_ext == '.mp4':
                         mime_type = "video/mp4"
-                        filename = "pointcloud_animation.mp4"
+                        filename = f"pointcloud_animation_{len(frames_data)}frames_{fps}fps.mp4"
                     else:
                         mime_type = "video/avi"
-                        filename = "pointcloud_animation.avi"
+                        filename = f"pointcloud_animation_{len(frames_data)}frames_{fps}fps.avi"
                     
-                    st.download_button(
+                    # Display file info
+                    file_size_mb = len(video_data) / (1024*1024)
+                    duration_sec = len(frames_data) / fps
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("🎬 Video ready!", f"{len(frames_data)} frames")
+                    with col2:
+                        st.metric("📁 File size", f"{file_size_mb:.1f} MB")
+                    with col3:
+                        st.metric("⏱️ Duration", f"{duration_sec:.1f} sec")
+                    
+                    # Main download button
+                    download_success = st.download_button(
                         f"📥 Download Animation Video ({file_ext.upper()})",
                         video_data,
                         file_name=filename,
                         mime=mime_type,
-                        use_container_width=True
+                        use_container_width=True,
+                        key="main_video_download"
                     )
-                
-                st.success(f"🎉 Video ready! {len(frames_data)} frames at {fps} FPS")
-                st.info(f"📁 Video size: {len(video_data) / (1024*1024):.1f} MB")
+                    
+                    if download_success:
+                        st.balloons()
+                        st.success(f"🎉 Download started! File: {filename}")
+                    
+                    # Additional info
+                    st.info(f"""
+                    **📊 Video Details:**
+                    - **Resolution**: {width}x{height}
+                    - **Codec**: {codec} ({file_ext.upper()})
+                    - **Frame Rate**: {fps} FPS
+                    - **Duration**: {duration_sec:.1f} seconds
+                    - **Quality**: High (matplotlib rendered)
+                    """)
+                    
+                    # Backup download option
+                    with st.expander("🔄 Alternative Download Options"):
+                        st.download_button(
+                            f"📥 Download {filename} (Backup)",
+                            video_data,
+                            file_name=filename,
+                            mime=mime_type,
+                            help="Use this if the main download doesn't work",
+                            key="backup_video_download"
+                        )
+                        
+                        # File path for advanced users
+                        st.code(f"Temp file location: {final_video_path}")
+                        
+                        if st.button("🗑️ Clean up temporary files"):
+                            try:
+                                import shutil
+                                shutil.rmtree(temp_dir)
+                                st.success("🧹 Temporary files cleaned up!")
+                            except Exception as cleanup_error:
+                                st.warning(f"Cleanup failed: {cleanup_error}")
                 
         except Exception as e:
             st.error(f"❌ Error creating video: {str(e)}")
+            
+            # Enhanced error information
+            with st.expander("🔍 Detailed Error Information"):
+                import traceback
+                st.code(traceback.format_exc())
+            
             st.info("""
-            **Troubleshooting Video Export:**
-            1. **Codec Issues**: Your system may be missing video codecs
-            2. **Alternative**: Use the desktop viewer for better performance
-            3. **Quick Fix**: Try reducing frame count for testing
-            4. **Manual Export**: Download PLY frames and use external tools
+            **🔧 Troubleshooting Video Export:**
+            
+            **Common Issues:**
+            1. **Codec Problems**: Your system may be missing video codecs
+            2. **Memory Issues**: Try reducing frame count or resolution
+            3. **File Permissions**: Check if you can write to temp directory
+            4. **OpenCV Issues**: Try reinstalling: `pip install opencv-python --upgrade`
+            
+            **Alternative Solutions:**
+            1. **Desktop Viewer**: Better performance for animations
+            2. **Frame Download**: Export individual PLY files instead
+            3. **Reduce Frames**: Test with smaller animation first
+            4. **External Tools**: Use OBS or other screen recording software
             """)
             
-            # Offer frame download as fallback
+            # Enhanced fallback options
             if st.button("📁 Download Individual Frames Instead"):
                 try:
                     temp_dir, _, ply_paths = self.save_animation_data(frames_data)
@@ -523,7 +641,7 @@ class Open3DLauncher:
                     import zipfile
                     zip_path = os.path.join(temp_dir, "animation_frames.zip")
                     
-                    with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         for i, ply_path in enumerate(ply_paths):
                             arcname = f"frame_{i:04d}.ply"
                             zipf.write(ply_path, arcname)
@@ -532,14 +650,36 @@ class Open3DLauncher:
                         st.download_button(
                             "📦 Download Frame Archive (ZIP)",
                             f.read(),
-                            file_name="animation_frames.zip",
+                            file_name=f"animation_frames_{len(frames_data)}.zip",
                             mime="application/zip"
                         )
                     
-                    st.success("✅ Individual frames ready for download!")
+                    st.success("✅ PLY frames ready for download!")
                     
                 except Exception as zip_error:
                     st.error(f"Frame download also failed: {zip_error}")
+            
+            if st.button("🎮 Try Desktop Viewer Instead"):
+                try:
+                    temp_dir, config_path, _ = self.save_animation_data(frames_data)
+                    
+                    # Launch animated viewer
+                    script_path = Path(__file__).parent / "open3d_desktop_viewer.py"
+                    cmd = [
+                        "python", str(script_path),
+                        "--animation", config_path,
+                        "--fps", str(fps)
+                    ]
+                    
+                    if os.name == 'nt':  # Windows
+                        subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                    else:
+                        subprocess.Popen(cmd)
+                    
+                    st.success("🎮 Desktop viewer launched! Better for animations anyway.")
+                    
+                except Exception as viewer_error:
+                    st.error(f"Desktop viewer failed: {viewer_error}")
     
     def save_animation_data(self, frames_data):
         """Save all frames for animated desktop viewer."""
@@ -852,7 +992,9 @@ python source/open3d_desktop_viewer.py --file pointcloud.ply
                 # Video export
                 st.subheader("🎥 Export Video")
                 if st.button("📹 Create MP4 Video", use_container_width=True):
-                    self.export_animation_video(frames_data, fps)
+                    st.session_state.export_video_requested = True
+                    st.session_state.video_export_frames = frames_data
+                    st.session_state.video_export_fps = fps
                 
                 # Frame download
                 st.subheader("💾 Download Frames")
@@ -955,6 +1097,14 @@ python source/open3d_desktop_viewer.py --animation [config_path] --fps {fps}
                 - **Interactive Animation**: Real-time playback with Open3D
                 - **Frame Navigation**: Manual frame-by-frame control
                 """)
+        
+        # Handle video export requests at the main level (outside any columns)
+        if st.session_state.get('export_video_requested', False):
+            st.session_state.export_video_requested = False  # Reset flag
+            frames_to_export = st.session_state.get('video_export_frames', [])
+            fps_to_use = st.session_state.get('video_export_fps', 10)
+            if frames_to_export:
+                self.export_animation_video(frames_to_export, fps_to_use)
 
 
 def main():
