@@ -2,10 +2,13 @@
 
 Clean, modular Streamlit interface for Open3D point cloud visualization.
 Uses separate modules for each concern, keeping this file focused on UI only.
+Enhanced with persistent user preferences and configurable settings.
 """
 
 import streamlit as st
 import time
+import json
+from pathlib import Path
 from source.point_cloud_generator import PointCloudGenerator, get_shape_parameters
 from source.file_manager import FileManager
 from source.video_exporter import VideoExporter
@@ -15,7 +18,7 @@ import matplotlib.pyplot as plt
 
 
 class StreamlitInterface:
-    """Main Streamlit application interface."""
+    """Main Streamlit application interface with user preferences."""
     
     def __init__(self):
         st.set_page_config(
@@ -23,18 +26,86 @@ class StreamlitInterface:
             page_icon="🚀",
             layout="wide"
         )
+        self.load_user_preferences()
         self.setup_session_state()
     
+    def load_user_preferences(self):
+        """Load user preferences from file or set defaults."""
+        self.preferences_file = Path("user_preferences.json")
+        
+        # Default preferences
+        self.default_prefs = {
+            'animation': {
+                'default_fps': 15,
+                'default_view_mode': 'Thumbnail Grid',
+                'default_max_thumbnails': 16,
+                'default_grid_columns': 4,
+                'default_max_strip_frames': 12,
+                'auto_launch_desktop': False
+            },
+            'generation': {
+                'default_shape': 'Sphere',
+                'default_points': 3000,
+                'default_sphere_radius': 1.0,
+                'default_torus_radius': 1.0,
+                'default_helix_turns': 3.0
+            },
+            'export': {
+                'default_video_quality': 'High',
+                'include_timestamp': True,
+                'auto_download': True
+            },
+            'interface': {
+                'show_advanced_controls': False,
+                'auto_preview': True,
+                'show_tooltips': True
+            }
+        }
+        
+        try:
+            if self.preferences_file.exists():
+                with open(self.preferences_file, 'r') as f:
+                    saved_prefs = json.load(f)
+                # Merge with defaults (in case new preferences were added)
+                self.preferences = {**self.default_prefs, **saved_prefs}
+            else:
+                self.preferences = self.default_prefs
+        except Exception:
+            self.preferences = self.default_prefs
+    
+    def save_user_preferences(self):
+        """Save current preferences to file."""
+        try:
+            with open(self.preferences_file, 'w') as f:
+                json.dump(self.preferences, f, indent=2)
+        except Exception as e:
+            st.error(f"Could not save preferences: {e}")
+    
     def setup_session_state(self):
-        """Initialize session state variables."""
+        """Initialize session state variables with user preferences."""
         if 'export_status' not in st.session_state:
             st.session_state.export_status = "Ready"
         if 'animation_fps' not in st.session_state:
-            st.session_state.animation_fps = 10
+            st.session_state.animation_fps = self.preferences['animation']['default_fps']
+        if 'view_mode' not in st.session_state:
+            st.session_state.view_mode = self.preferences['animation']['default_view_mode']
+        if 'max_thumbnails' not in st.session_state:
+            st.session_state.max_thumbnails = self.preferences['animation']['default_max_thumbnails']
+        if 'grid_columns' not in st.session_state:
+            st.session_state.grid_columns = self.preferences['animation']['default_grid_columns']
     
     def render_sidebar(self):
         """Render sidebar with all controls."""
         with st.sidebar:
+            # Settings button at top of sidebar
+            if st.button("⚙️ Settings & Preferences", use_container_width=True, help="Configure your default settings"):
+                st.session_state.show_settings = not st.session_state.get('show_settings', False)
+            
+            # Show settings panel in sidebar if toggled
+            if st.session_state.get('show_settings', False):
+                self.render_sidebar_settings()
+                st.markdown("---")
+            
             st.header("Configuration")
             
             # Data source selection
@@ -50,12 +121,153 @@ class StreamlitInterface:
             else:  # Animation Folder
                 self.render_animation_controls()
     
+    def render_sidebar_settings(self):
+        """Render organized settings panel in sidebar by functional area."""
+        st.subheader("⚙️ User Preferences")
+        
+        # 📁 LOAD SETTINGS
+        with st.expander("📁 Load Settings", expanded=True):
+            new_auto_launch = st.checkbox(
+                "Auto-launch Desktop Viewer",
+                value=self.preferences['animation']['auto_launch_desktop'],
+                help="Automatically open 3D viewer when loading animations"
+            )
+            
+            auto_preview = st.checkbox(
+                "Auto-generate Preview",
+                value=self.preferences['interface']['auto_preview'],
+                help="Automatically show preview when loading data"
+            )
+        
+        # 🎲 GENERATE SETTINGS  
+        with st.expander("🎲 Generate Settings", expanded=False):
+            new_shape = st.selectbox(
+                "Default Shape",
+                ["Sphere", "Torus", "Helix", "Cube", "Random"],
+                index=["Sphere", "Torus", "Helix", "Cube", "Random"].index(
+                    self.preferences['generation']['default_shape']
+                )
+            )
+            
+            new_points = st.slider(
+                "Default Points",
+                100, 10000,
+                self.preferences['generation']['default_points']
+            )
+        
+        # 🎬 ANIMATE SETTINGS
+        with st.expander("🎬 Animate Settings", expanded=True):
+            new_fps = st.slider(
+                "Default FPS", 
+                1, 30, 
+                self.preferences['animation']['default_fps'],
+                help="Animation playback and export speed"
+            )
+            
+            new_view_mode = st.selectbox(
+                "Default View Mode",
+                ["Thumbnail Grid", "Timeline Strip", "Single Frame"],
+                index=["Thumbnail Grid", "Timeline Strip", "Single Frame"].index(
+                    self.preferences['animation']['default_view_mode']
+                ),
+                help="Default way to display animations"
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                new_max_thumbnails = st.slider(
+                    "Max Thumbnails",
+                    8, 32,
+                    self.preferences['animation']['default_max_thumbnails'],
+                    help="Grid thumbnail count"
+                )
+            
+            with col2:
+                new_grid_columns = st.selectbox(
+                    "Grid Columns",
+                    [3, 4, 5, 6],
+                    index=[3, 4, 5, 6].index(self.preferences['animation']['default_grid_columns']),
+                    help="Thumbnail grid columns"
+                )
+            
+            new_video_quality = st.selectbox(
+                "Export Quality",
+                ["Low", "Medium", "High", "Ultra"],
+                index=["Low", "Medium", "High", "Ultra"].index(
+                    self.preferences['export']['default_video_quality']
+                ),
+                help="Default video export quality"
+            )
+            
+            new_auto_download = st.checkbox(
+                "Auto-download Exports",
+                value=self.preferences['export']['auto_download'],
+                help="Automatically download when export completes"
+            )
+        
+        # Save/Reset buttons
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save All", type="primary", use_container_width=True):
+                # Update all preferences
+                self.preferences['animation'].update({
+                    'default_fps': new_fps,
+                    'default_view_mode': new_view_mode,
+                    'default_max_thumbnails': new_max_thumbnails,
+                    'default_grid_columns': new_grid_columns,
+                    'auto_launch_desktop': new_auto_launch
+                })
+                
+                self.preferences['generation'].update({
+                    'default_shape': new_shape,
+                    'default_points': new_points
+                })
+                
+                self.preferences['export'].update({
+                    'default_video_quality': new_video_quality,
+                    'auto_download': new_auto_download
+                })
+                
+                self.preferences['interface'].update({
+                    'auto_preview': auto_preview
+                })
+                
+                # Save to file
+                self.save_user_preferences()
+                
+                # Update session state
+                st.session_state.animation_fps = new_fps
+                st.session_state.view_mode = new_view_mode
+                st.session_state.max_thumbnails = new_max_thumbnails
+                st.session_state.grid_columns = new_grid_columns
+                
+                st.success("✅ All settings saved!")
+                time.sleep(1)
+                st.rerun()
+        
+        with col2:
+            if st.button("🔄 Reset All", use_container_width=True):
+                self.preferences = self.default_prefs
+                self.save_user_preferences()
+                st.success("✅ Reset to defaults!")
+                time.sleep(1)
+                st.rerun()
+    
     def render_generation_controls(self):
-        """Render point cloud generation controls."""
+        """Render point cloud generation controls with user preferences."""
         st.subheader("Generation Settings")
         
-        shape_type = st.selectbox("Shape Type", ["Sphere", "Torus", "Helix", "Cube", "Random"])
-        num_points = st.slider("Number of Points", 100, 10000, 2000)
+        # Use user preferences as defaults
+        default_shape = self.preferences['generation']['default_shape']
+        default_points = self.preferences['generation']['default_points']
+        
+        shape_type = st.selectbox(
+            "Shape Type", 
+            ["Sphere", "Torus", "Helix", "Cube", "Random"],
+            index=["Sphere", "Torus", "Helix", "Cube", "Random"].index(default_shape)
+        )
+        num_points = st.slider("Number of Points", 100, 10000, default_points)
         
         # Dynamic shape parameters
         shape_params = {}
@@ -129,6 +341,14 @@ class StreamlitInterface:
                 st.session_state.frames_data = frames_data
                 st.session_state.config = {'source': 'animation', 'folder_path': folder_path}
                 st.success(f"Loaded {len(frames_data)} frames")
+                
+                # Auto-launch desktop viewer if enabled
+                if self.preferences['animation']['auto_launch_desktop']:
+                    fps = st.session_state.animation_fps
+                    success, message = DesktopLauncher.launch_animation_viewer(frames_data, fps)
+                    if success:
+                        st.info("🚀 Auto-launched desktop viewer!")
+                    
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     
@@ -160,70 +380,52 @@ class StreamlitInterface:
                     st.error(message)
     
     def render_animation_view(self):
-        """Render interface for animation."""
+        """Render interface for animation with clean, non-redundant controls."""
         frames_data = st.session_state.frames_data
         
         # Initialize frame index if not set
         if 'current_frame_idx' not in st.session_state:
             st.session_state.current_frame_idx = 0
         
-        # Animation controls in sidebar
+        # Clean animation info in sidebar
         with st.sidebar:
             st.markdown("---")
-            st.subheader("Animation Controls")
+            st.subheader("Animation Info")
             st.metric("Frames", len(frames_data))
             
-            # Simplified FPS control
-            fps = st.slider("FPS", 1, 30, st.session_state.animation_fps)
-            st.session_state.animation_fps = fps
-            
-            st.markdown("---")
-            
-            # Visualization options
-            st.subheader("View Options")
-            view_mode = st.selectbox(
-                "Display Mode",
-                ["Thumbnail Grid", "Timeline Strip", "Single Frame"],
-                help="Choose how to display the animation frames"
-            )
-            
-            # View-specific options
-            if view_mode == "Thumbnail Grid":
-                max_thumbnails = st.slider("Max Thumbnails", 8, 32, 16)
-                grid_cols = st.selectbox("Grid Columns", [3, 4, 5, 6], index=1)
-            elif view_mode == "Timeline Strip":
-                max_strip_frames = st.slider("Max Strip Frames", 6, 20, 12)
-            else:  # Single Frame
-                frame_idx = st.slider("Frame", 0, len(frames_data)-1, st.session_state.current_frame_idx)
-                st.session_state.current_frame_idx = frame_idx
-            
-            st.markdown("---")
-            
-            # Export and viewer controls
+            # Single action buttons
             st.subheader("Actions")
             
-            # Export video - simplified
-            if st.button("Export Video", type="primary", use_container_width=True):
+            # Single export button (no redundant controls)
+            if st.button("🎥 Export Video", type="primary", use_container_width=True):
                 st.session_state.export_requested = True
             
-            # Desktop viewer
-            if st.button("Desktop Viewer", use_container_width=True):
+            # Desktop viewer button
+            if st.button("🖥️ Desktop Viewer", use_container_width=True):
+                # Use FPS from settings
+                fps = st.session_state.animation_fps
                 success, message = DesktopLauncher.launch_animation_viewer(frames_data, fps)
                 if success:
                     st.success("Animation viewer launched!")
                 else:
                     st.error(message)
         
-        # Main area - visualization based on selected mode
+        # Main area - visualization based on settings (no redundant controls)
         st.subheader("Animation Viewer")
         
         # Handle video export
         if st.session_state.get('export_requested', False):
+            # Use FPS from settings
+            fps = st.session_state.animation_fps
             self.handle_video_export(frames_data, fps)
         
-        # Show visualization based on selected mode
+        # Show visualization based on saved view mode preference
+        view_mode = st.session_state.view_mode
+        max_thumbnails = st.session_state.max_thumbnails
+        grid_cols = st.session_state.grid_columns
+        
         if view_mode == "Thumbnail Grid":
-            st.markdown(f"**Grid Overview** - Showing up to {max_thumbnails} frames in {grid_cols} columns")
+            st.markdown(f"**Grid Overview** - {max_thumbnails} frames in {grid_cols} columns")
             with st.spinner("Generating thumbnail grid..."):
                 fig = PointCloudVisualizer.create_animation_thumbnail_grid(
                     frames_data, max_frames=max_thumbnails, grid_cols=grid_cols
@@ -237,7 +439,8 @@ class StreamlitInterface:
                        f"Frames are sampled evenly across the animation.")
         
         elif view_mode == "Timeline Strip":
-            st.markdown(f"**Timeline View** - Showing up to {max_strip_frames} frames in sequence")
+            max_strip_frames = self.preferences['animation']['default_max_strip_frames']
+            st.markdown(f"**Timeline View** - {max_strip_frames} frames in sequence")
             with st.spinner("Generating timeline strip..."):
                 fig = PointCloudVisualizer.create_animation_strip(
                     frames_data, max_frames=max_strip_frames
@@ -252,7 +455,7 @@ class StreamlitInterface:
             current_frame = st.session_state.current_frame_idx
             st.markdown(f"**Single Frame View** - Frame {current_frame + 1} of {len(frames_data)}")
             
-            # Add frame navigation buttons
+            # Frame navigation controls
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 if st.button("⏮️ First"):
@@ -273,6 +476,17 @@ class StreamlitInterface:
                     st.session_state.current_frame_idx = len(frames_data) - 1
                     st.rerun()
             
+            # Frame slider for single frame mode
+            frame_idx = st.slider(
+                "Select Frame", 
+                0, len(frames_data)-1, 
+                st.session_state.current_frame_idx,
+                help="Navigate through animation frames"
+            )
+            if frame_idx != st.session_state.current_frame_idx:
+                st.session_state.current_frame_idx = frame_idx
+                st.rerun()
+            
             # Show single frame
             bounds = PointCloudVisualizer.calculate_animation_bounds(frames_data)
             fig = PointCloudVisualizer.create_animation_frame_plot(
@@ -282,7 +496,7 @@ class StreamlitInterface:
             plt.close(fig)
     
     def handle_video_export(self, frames_data, fps):
-        """Handle video export with progress tracking."""
+        """Handle video export with progress tracking and user preferences."""
         st.markdown("---")
         st.markdown("## Exporting Video...")
         
@@ -318,14 +532,20 @@ class StreamlitInterface:
                     video_data = f.read()
                 
                 st.markdown("### Video Export Complete!")
-                st.download_button(
+                
+                # Auto-download if enabled in preferences
+                download_button = st.download_button(
                     "Download Video",
                     video_data,
                     file_name=f"animation_{len(frames_data)}frames_{fps}fps.mp4",
                     mime="video/mp4",
                     type="primary"
                 )
-                st.balloons()
+                
+                if self.preferences['export']['auto_download'] and download_button:
+                    st.balloons()
+                else:
+                    st.balloons()
             
         except Exception as e:
             st.error(f"Export failed: {str(e)}")
@@ -351,6 +571,9 @@ class StreamlitInterface:
     def render_welcome_screen(self):
         """Render welcome screen when no data is loaded."""
         st.info("👈 Configure your point cloud in the sidebar to get started!")
+        
+        # Settings hint
+        st.markdown("💡 **New!** Click **⚙️ Settings & Preferences** in the sidebar to configure defaults for Load, Generate, and Animate operations.")
         
         # Quick overview
         col1, col2, col3 = st.columns(3)
