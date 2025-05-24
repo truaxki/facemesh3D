@@ -27,6 +27,7 @@ import json
 from pathlib import Path
 import pandas as pd
 from io import StringIO
+import time
 
 
 class Open3DLauncher:
@@ -119,25 +120,40 @@ class Open3DLauncher:
     
     def save_config_and_data(self, points, colors, config):
         """Save point cloud data and config for desktop viewer."""
-        # Create temp directory
-        temp_dir = tempfile.mkdtemp(prefix="open3d_")
+        # Create temp directory with timestamp to avoid conflicts
+        timestamp = int(time.time() * 1000)  # milliseconds for uniqueness
+        temp_dir = tempfile.mkdtemp(prefix=f"open3d_{timestamp}_")
         
-        # Save point cloud
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))
-        if colors is not None:
-            pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
-        pcd.estimate_normals()
-        
-        ply_path = os.path.join(temp_dir, "pointcloud.ply")
-        o3d.io.write_point_cloud(ply_path, pcd)
-        
-        # Save config
-        config_path = os.path.join(temp_dir, "config.json")
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
-        
-        return ply_path, config_path, temp_dir
+        try:
+            # Save point cloud
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))
+            if colors is not None:
+                pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+            pcd.estimate_normals()
+            
+            ply_path = os.path.join(temp_dir, f"pointcloud_{timestamp}.ply")
+            success = o3d.io.write_point_cloud(ply_path, pcd)
+            
+            if not success:
+                raise RuntimeError("Failed to write PLY file")
+            
+            # Save config
+            config_path = os.path.join(temp_dir, f"config_{timestamp}.json")
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+            
+            return ply_path, config_path, temp_dir
+            
+        except Exception as e:
+            # Clean up on error
+            try:
+                import shutil
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+            except:
+                pass
+            raise e
     
     def launch_desktop_viewer(self, ply_path, config):
         """Launch the desktop Open3D viewer with specified parameters."""
@@ -211,15 +227,32 @@ class Open3DLauncher:
                 return points, colors
             
             elif uploaded_file.name.endswith(('.ply', '.pcd', '.xyz')):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp:
-                    tmp.write(uploaded_file.getvalue())
-                    tmp.flush()
-                    pcd = o3d.io.read_point_cloud(tmp.name)
-                    os.unlink(tmp.name)
+                # Create temp file with proper Windows handling
+                temp_fd, temp_path = tempfile.mkstemp(suffix=os.path.splitext(uploaded_file.name)[1])
+                try:
+                    # Write data to temp file
+                    with os.fdopen(temp_fd, 'wb') as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        tmp_file.flush()
+                        os.fsync(tmp_file.fileno())  # Force write to disk
                     
+                    # Now read with Open3D (file is properly closed)
+                    pcd = o3d.io.read_point_cloud(temp_path)
+                    
+                    # Extract data
                     points = np.asarray(pcd.points)
                     colors = np.asarray(pcd.colors) if len(pcd.colors) > 0 else None
+                    
                     return points, colors
+                    
+                finally:
+                    # Clean up temp file
+                    try:
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
+                    except (OSError, PermissionError) as e:
+                        # Log warning but don't fail - temp files will be cleaned up by OS
+                        st.warning(f"Could not clean up temporary file: {e}")
             
         except Exception as e:
             st.error(f"Error loading file: {str(e)}")
