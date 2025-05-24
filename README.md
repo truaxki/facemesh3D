@@ -1,78 +1,139 @@
 # 🎬 Zoetrope Point Cloud Viewer
 
-A Streamlit application that generates random 3D point clouds, rotates them around the Y-axis, and creates zoetrope-like animations with PNG thumbnails.
+A clean, modular Streamlit application that generates random 3D point clouds, rotates them around the Y-axis, and creates zoetrope-like animations.
 
 ## Project Structure
 
 ```
 facemesh/
-├── data/           # Generated PNG frames and videos
-├── source/         # Python source code
-│   └── zoetrope_app.py
-├── requirements.txt
-└── README.md
+├── data/                    # Generated PNG frames and videos
+├── source/                  # Python source code
+│   ├── point_cloud.py      # Core point cloud logic (89 lines)
+│   ├── streamlit_ui.py     # Streamlit interface (140 lines)
+│   ├── zoetrope_app.py     # Main entry point (14 lines)
+│   └── example_usage.py    # Standalone examples (80 lines)
+├── requirements.txt         # Python dependencies (5 lines)
+├── run_app.py              # Simple launcher (20 lines)
+└── README.md               # This file
 ```
+
+## 🏗️ Clean Architecture
+
+### 📊 `point_cloud.py` - Core Logic (89 lines)
+- **`PointCloudZoetrope`**: Generates and manipulates 3D point clouds
+- **`ZoetropeAnimator`**: Creates frames and videos from point clouds
+- **Utility functions**: `create_point_cloud()`, `create_animation()`
+- **Zero dependencies** on Streamlit
+
+### 🖥️ `streamlit_ui.py` - Interface (140 lines)
+- **`ZoetropeApp`**: Complete Streamlit interface
+- **Clean separation**: UI logic separate from business logic
+- **Progress callbacks**: Real-time updates during generation
+
+### 🚀 `zoetrope_app.py` - Entry Point (14 lines)
+- Simple entry point that imports and runs the UI
 
 ## Features
 
-- **Random 3D Point Cloud Generation**: Creates spherical distributions of points in 3D space
-- **Y-axis Rotation**: Rotates the point cloud around the Y-axis at customizable speeds
-- **PNG Frame Generation**: Saves each rotation angle as a high-quality PNG image
-- **Thumbnail Grid View**: Displays all generated frames in an organized grid
-- **Animation Preview**: Play the rotation sequence directly in the browser
-- **Video Export**: Combine frames into MP4 video with customizable FPS
-- **Zoetrope Effect**: Creates smooth optical illusion of motion like classic zoetrope toys
+- **Random 3D Point Cloud Generation**: Spherical distributions using proper math
+- **Y-axis Rotation**: Smooth rotation using rotation matrices
+- **PNG Frame Generation**: High-quality images with depth-based coloring
+- **Thumbnail Grid View**: Organized display of all frames
+- **Animation Preview**: Browser-based playback
+- **Video Export**: MP4 creation with customizable FPS
+- **Modular Design**: Use core logic independently
 
-## Installation
+## Quick Start
 
-1. Install the required dependencies:
+1. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
-
-1. Run the Streamlit application:
+2. **Run the app:**
 ```bash
+python run_app.py
+# OR
 streamlit run source/zoetrope_app.py
 ```
 
-2. Open your browser and navigate to the displayed URL (usually `http://localhost:8501`)
+3. **Use the controls** in the sidebar to customize your animation
 
-3. Use the sidebar controls to:
-   - Adjust the number of points (50-500)
-   - Set the cloud radius (1-10)
-   - Choose number of frames (12-72)
-   - Set video FPS (1-10)
+## API Reference
 
-4. Click "Generate New Point Cloud & Frames" to create a new animation
+### Core Classes
 
-5. Explore the three tabs:
-   - **Thumbnails**: View all generated PNG frames in a grid
-   - **Animation Preview**: Play the rotation sequence
-   - **Video**: Create and download an MP4 video
+```python
+# Point cloud generation and manipulation
+class PointCloudZoetrope:
+    def __init__(self, num_points=100, radius=5)
+    def rotate_y(self, angle_degrees)           # Returns rotated points
+    def create_frame(self, angle_degrees)       # Returns matplotlib figure
+    def save_frame(self, angle_degrees, path)   # Saves PNG file
+
+# Animation creation
+class ZoetropeAnimator:
+    def __init__(self, point_cloud)
+    def generate_frames(self, num_frames=36, data_dir="data", progress_callback=None)
+    def create_video(self, frame_paths, output_path, fps=1)
+```
+
+### Convenience Functions
+
+```python
+def create_point_cloud(num_points=100, radius=5)
+def create_animation(num_points, radius, num_frames, data_dir, fps, progress_callback)
+```
+
+## Usage Examples
+
+### 🐍 Python Module Usage
+
+```python
+from source.point_cloud import PointCloudZoetrope, ZoetropeAnimator
+
+# Create a point cloud
+cloud = PointCloudZoetrope(num_points=100, radius=5)
+
+# Generate frames
+animator = ZoetropeAnimator(cloud)
+frame_paths = animator.generate_frames(num_frames=24)
+
+# Create video
+video_path = animator.create_video(frame_paths, fps=2)
+```
+
+### 📝 Run Examples
+
+```bash
+python source/example_usage.py
+```
 
 ## How It Works
 
-1. **Point Cloud Generation**: Random points are distributed within a sphere using spherical coordinates
-2. **Rotation**: Each frame rotates the point cloud by a specific angle around the Y-axis
-3. **Visualization**: 3D matplotlib plots with depth-based coloring for better visual perception
-4. **Frame Export**: Each rotation is saved as a PNG file in the `data/` directory
-5. **Video Creation**: OpenCV combines all frames into a smooth video file
+1. **Point Generation**: Random points distributed in a sphere using spherical coordinates
+2. **Rotation**: Y-axis rotation using 3D rotation matrices
+3. **Visualization**: 3D matplotlib plots with depth-based coloring
+4. **Export**: PNG frames and MP4 video creation
 
 ## Customization
 
-You can modify the following parameters in the sidebar:
-- **Number of Points**: Controls the density of the point cloud
-- **Cloud Radius**: Determines the size of the spherical distribution
-- **Number of Frames**: Sets how many rotation angles to generate (more frames = smoother animation)
-- **Video FPS**: Controls the playback speed of the final video
+### Streamlit Parameters
+- **Points**: 50-500 (density of the cloud)
+- **Radius**: 1-10 (size of distribution)
+- **Frames**: 12-72 (rotation angles)
+- **FPS**: 1-10 (video playback speed)
 
-## Output Files
+### Programmatic Usage
+```python
+# Custom point cloud
+cloud = PointCloudZoetrope(num_points=500, radius=10)
 
-- PNG frames are saved in `data/frame_XXX_YYY.Ydeg.png` format
-- Videos are saved as `data/zoetrope_video.mp4`
-- All files can be downloaded directly from the web interface
+# Custom animation
+frames, video = create_animation(
+    num_points=200, radius=8, num_frames=60, fps=5
+)
+```
 
 ## Requirements
 
@@ -83,9 +144,17 @@ You can modify the following parameters in the sidebar:
 - Pillow 10.0.0+
 - OpenCV 4.8.0+
 
+## Benefits of Clean Design
+
+✅ **Simplicity**: Reduced from 600+ to 350 lines total  
+✅ **Clarity**: Clear class names and method signatures  
+✅ **Reusability**: Core logic usable anywhere  
+✅ **Maintainability**: Single responsibility principle  
+✅ **Testability**: Easy to unit test components  
+
 ## Tips
 
-- Start with fewer frames (12-24) for faster generation
-- Higher point counts create more detailed visualizations
-- Use FPS=1 for the classic zoetrope effect (1 frame per second)
-- The black background enhances the visual effect of the rotating points 
+- Start with 24 frames for quick generation
+- Use FPS=1 for classic zoetrope effect
+- Higher point counts create more detailed visuals
+- Black background enhances the rotating effect 
