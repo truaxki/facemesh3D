@@ -1,61 +1,98 @@
 #!/usr/bin/env python3
 """main.py
 
-Main launcher for the Open3D Point Cloud Visualization System
-============================================================
+Streamlined launcher for the Open3D Point Cloud Visualization application.
+Now uses modular architecture for better maintainability.
 
-This launches the web-based control panel that lets you:
-1. Configure point cloud settings
-2. Generate or upload point cloud data  
-3. Launch the interactive Open3D desktop viewer
-
-The version you liked from http://localhost:8501/
-
-Usage: python main.py
+Run: python main.py
 """
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 
+
+def check_dependencies():
+    """Check if required packages are installed."""
+    required_packages = [
+        'streamlit',
+        'open3d', 
+        'numpy',
+        'matplotlib',
+        'opencv-python',
+        'pandas'
+    ]
+    
+    missing = []
+    for package in required_packages:
+        try:
+            if package == 'opencv-python':
+                import cv2
+            else:
+                __import__(package)
+        except ImportError:
+            missing.append(package)
+    
+    if missing:
+        print("❌ Missing required packages:")
+        for pkg in missing:
+            print(f"   - {pkg}")
+        print("\n💡 Install with: pip install " + " ".join(missing))
+        return False
+    
+    return True
+
+
 def main():
-    """Launch the Open3D Streamlit control panel."""
-    print("🚀 Starting Open3D Point Cloud Visualization System...")
-    print("   Web interface: Configure settings, upload files")
-    print("   Desktop viewer: Full Open3D interactivity")
-    print()
+    """Main launcher function."""
+    print("🚀 Open3D Point Cloud Visualization Launcher")
+    print("=" * 50)
     
-    # Path to the main app
-    app_path = Path(__file__).parent / "source" / "streamlit_open3d_launcher.py"
+    # Check dependencies
+    print("📦 Checking dependencies...")
+    if not check_dependencies():
+        print("\n❌ Please install missing dependencies first.")
+        return 1
     
-    if not app_path.exists():
-        print(f"❌ Error: Could not find {app_path}")
-        print("   Make sure you're running from the project root directory.")
-        sys.exit(1)
+    print("✅ All dependencies available")
+    
+    # Check if application files exist
+    source_dir = Path(__file__).parent / "source"
+    interface_file = source_dir / "streamlit_interface.py"
+    
+    if not interface_file.exists():
+        print(f"❌ Interface file not found: {interface_file}")
+        print("   Make sure the source/ directory contains the application files.")
+        return 1
+    
+    # Launch the new modular interface
+    print("\n🌐 Starting Streamlit application...")
+    print("   URL: http://localhost:8507")
+    print("   Press Ctrl+C to stop")
+    print("\n" + "=" * 50)
     
     try:
-        # Launch Streamlit
-        print(f"📂 Launching: {app_path}")
-        print("🌐 Opening web interface...")
-        print()
-        print("   The app will open in your browser automatically.")
-        print("   If not, go to: http://localhost:8501")
-        print()
-        print("   Press Ctrl+C to stop the server.")
-        print()
+        # Use the new modular interface
+        cmd = [
+            sys.executable, "-m", "streamlit", "run", 
+            str(interface_file), 
+            "--server.port", "8507",
+            "--server.headless", "false"
+        ]
         
-        subprocess.run([
-            "streamlit", "run", str(app_path),
-            "--server.headless", "false",
-            "--browser.gatherUsageStats", "false"
-        ])
+        # Launch Streamlit
+        result = subprocess.run(cmd)
+        return result.returncode
         
     except KeyboardInterrupt:
-        print("\n👋 Shutting down Open3D launcher. Goodbye!")
+        print("\n👋 Application stopped by user")
+        return 0
     except Exception as e:
-        print(f"❌ Error launching app: {e}")
-        print("   Try running manually: streamlit run source/streamlit_open3d_launcher.py")
-        sys.exit(1)
+        print(f"❌ Error launching application: {e}")
+        return 1
+
 
 if __name__ == "__main__":
-    main() 
+    exit_code = main()
+    sys.exit(exit_code) 
