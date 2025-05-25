@@ -2,7 +2,7 @@
 
 Handles all file I/O operations for point clouds.
 Supports PLY, PCD, XYZ, and CSV formats with proper error handling.
-Enhanced with facial landmark time series CSV support.
+Enhanced with facial landmark time series CSV support and data filtering.
 """
 
 import os
@@ -15,6 +15,7 @@ import open3d as o3d
 import pandas as pd
 from io import StringIO
 from pathlib import Path
+from data_filters import DataFilters
 
 
 class FileManager:
@@ -309,8 +310,8 @@ class FileManager:
         return colors
     
     @staticmethod
-    def create_facial_animation_folder(uploaded_file, folder_name=None, color_mode='movement', max_frames=None, z_scale=50.0):
-        """Create animation folder from facial landmark CSV."""
+    def create_facial_animation_folder(uploaded_file, folder_name=None, color_mode='movement', max_frames=None, z_scale=50.0, filters=None):
+        """Create animation folder from facial landmark CSV with optional filtering."""
         try:
             # Parse the CSV
             content = StringIO(uploaded_file.getvalue().decode('utf-8'))
@@ -327,12 +328,29 @@ class FileManager:
                 frames_data = [frames_data[i] for i in indices]
                 print(f"📊 Subsampled to {len(frames_data)} frames")
             
+            # Apply filters if specified
+            if filters and len(filters) > 0:
+                print(f"🔧 Applying {len(filters)} filter(s) to animation data...")
+                frames_data = DataFilters.apply_filter_chain(frames_data, filters)
+            
             # Generate folder name if not provided
             if not folder_name:
                 base_name = uploaded_file.name.replace('.csv', '')
                 subject = df.iloc[0].get('Subject Name', 'unknown') if 'Subject Name' in df.columns else 'unknown'
                 test = df.iloc[0].get('Test Name', 'baseline') if 'Test Name' in df.columns else 'baseline'
-                folder_name = f"facemesh_{subject}_{test}_{len(frames_data)}frames"
+                
+                # Add filter suffix to folder name
+                filter_suffix = ""
+                if filters:
+                    filter_names = [f['filter'] for f in filters]
+                    if 'kabsch_alignment' in filter_names:
+                        filter_suffix += "_aligned"
+                    if 'center_frames' in filter_names:
+                        filter_suffix += "_centered"
+                    if 'remove_outliers' in filter_names:
+                        filter_suffix += "_filtered"
+                
+                folder_name = f"facemesh_{subject}_{test}_{len(frames_data)}frames{filter_suffix}"
             
             # Create animation folder
             animations_dir = Path("animations")
@@ -374,6 +392,7 @@ class FileManager:
                 'subject': str(df.iloc[0].get('Subject Name', 'unknown')) if 'Subject Name' in df.columns else 'unknown',
                 'test': str(df.iloc[0].get('Test Name', 'baseline')) if 'Test Name' in df.columns else 'baseline',
                 'duration_seconds': float(df.iloc[-1].get('Time (s)', len(frames_data))) if 'Time (s)' in df.columns else float(len(frames_data)),
+                'applied_filters': filters if filters else [],
                 'created_timestamp': time.time()
             }
             
@@ -383,6 +402,8 @@ class FileManager:
             
             print(f"✅ Created facial animation: {folder_path}")
             print(f"📊 {saved_frames} frames saved")
+            if filters:
+                print(f"🔧 Applied filters: {[f['filter'] for f in filters]}")
             
             return str(folder_path), saved_frames, metadata
             

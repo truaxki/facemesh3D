@@ -1,0 +1,21 @@
+{
+  "type": "facial_landmark_animation",
+  "source_file": "e4-baseline.csv",
+  "total_frames": 52,
+  "saved_frames": 52,
+  "color_mode": "movement",
+  "z_scale": 25.0,
+  "landmarks_count": 478,
+  "subject": "e26",
+  "test": "baseline",
+  "duration_seconds": 9.0,
+  "applied_filters": [
+    {
+      "filter": "kabsch_alignment",
+      "params": {
+        "baseline_frame_idx": 0
+      }
+    }
+  ],
+  "created_timestamp": 1748215381.8346515
+}

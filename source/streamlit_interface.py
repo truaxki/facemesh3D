@@ -8,6 +8,7 @@ Enhanced with persistent user preferences and configurable settings.
 import streamlit as st
 import time
 import json
+import numpy as np
 from pathlib import Path
 from point_cloud_generator import PointCloudGenerator, get_shape_parameters
 from file_manager import FileManager
@@ -670,11 +671,139 @@ class StreamlitInterface:
                              "Facial data often needs significant scaling!"
                     )
                     
+                    # Data Filtering Section
+                    st.markdown("**🔧 Data Filtering (Optional):**")
+                    
+                    # Import the DataFilters class
+                    from data_filters import DataFilters
+                    
+                    # Get available filters
+                    available_filters = DataFilters.get_available_filters()
+                    
+                    # Filter selection
+                    enable_filtering = st.checkbox("Enable Data Filtering", value=False, 
+                                                  help="Apply mathematical transformations to the data before creating animation")
+                    
+                    filters_to_apply = []
+                    
+                    if enable_filtering:
+                        st.markdown("**Select Filters to Apply:**")
+                        
+                        # Kabsch Alignment Filter
+                        if st.checkbox("🎯 Kabsch Alignment", value=False, 
+                                      help="Align all frames to a baseline frame using optimal rotation (removes rigid body motion)"):
+                            baseline_frame = st.number_input(
+                                "Baseline Frame Index",
+                                min_value=0,
+                                max_value=num_frames-1,
+                                value=0,
+                                help="Frame to use as reference for alignment (0 = first frame)"
+                            )
+                            filters_to_apply.append({
+                                'filter': 'kabsch_alignment',
+                                'params': {'baseline_frame_idx': baseline_frame}
+                            })
+                            
+                            st.info("🎯 **Kabsch Algorithm**: Removes rigid body motion by optimally aligning all frames to the baseline. Perfect for focusing on facial expressions while removing head movement.")
+                        
+                        # Center Frames Filter
+                        if st.checkbox("📍 Center Frames", value=False,
+                                      help="Center all frames at origin (removes translation)"):
+                            filters_to_apply.append({
+                                'filter': 'center_frames',
+                                'params': {}
+                            })
+                        
+                        # Scale Frames Filter
+                        if st.checkbox("📏 Scale Frames", value=False,
+                                      help="Scale all frames by a constant factor"):
+                            scale_factor = st.number_input(
+                                "Scale Factor",
+                                min_value=0.1,
+                                max_value=10.0,
+                                value=1.0,
+                                step=0.1,
+                                help="Scaling factor (1.0 = no change, >1.0 = larger, <1.0 = smaller)"
+                            )
+                            filters_to_apply.append({
+                                'filter': 'scale_frames',
+                                'params': {'scale_factor': scale_factor}
+                            })
+                        
+                        # Remove Outliers Filter
+                        if st.checkbox("🧹 Remove Outliers", value=False,
+                                      help="Remove points that are far from the centroid"):
+                            std_threshold = st.number_input(
+                                "Standard Deviation Threshold",
+                                min_value=1.0,
+                                max_value=5.0,
+                                value=2.0,
+                                step=0.1,
+                                help="Points beyond this many standard deviations from mean distance will be removed"
+                            )
+                            filters_to_apply.append({
+                                'filter': 'remove_outliers',
+                                'params': {'std_threshold': std_threshold}
+                            })
+                        
+                        # Custom Matrix Transform
+                        if st.checkbox("🔢 Custom Matrix Transform", value=False,
+                                      help="Apply a custom transformation matrix (advanced)"):
+                            st.markdown("**Enter 3x3 Rotation Matrix (comma-separated rows):**")
+                            
+                            # Default identity matrix
+                            default_matrix = "1,0,0\n0,1,0\n0,0,1"
+                            matrix_text = st.text_area(
+                                "Transformation Matrix",
+                                value=default_matrix,
+                                height=100,
+                                help="Enter a 3x3 matrix as comma-separated values, one row per line"
+                            )
+                            
+                            try:
+                                # Parse matrix
+                                rows = matrix_text.strip().split('\n')
+                                matrix_data = []
+                                for row in rows:
+                                    matrix_data.append([float(x.strip()) for x in row.split(',')])
+                                
+                                custom_matrix = np.array(matrix_data)
+                                
+                                if custom_matrix.shape == (3, 3):
+                                    st.success(f"✅ Valid 3x3 matrix")
+                                    filters_to_apply.append({
+                                        'filter': 'custom_matrix',
+                                        'params': {'matrix': custom_matrix}
+                                    })
+                                else:
+                                    st.error(f"❌ Matrix must be 3x3, got {custom_matrix.shape}")
+                            except Exception as e:
+                                st.error(f"❌ Invalid matrix format: {str(e)}")
+                        
+                        # Show filter summary
+                        if filters_to_apply:
+                            st.markdown("**🔧 Filters to Apply:**")
+                            for i, filter_config in enumerate(filters_to_apply):
+                                filter_info = available_filters[filter_config['filter']]
+                                st.write(f"{i+1}. **{filter_info['name']}**: {filter_info['description']}")
+                    
                     # Folder naming
                     subject = df.iloc[0].get('Subject Name', 'unknown') if 'Subject Name' in df.columns else 'unknown'
                     test = df.iloc[0].get('Test Name', 'baseline') if 'Test Name' in df.columns else 'baseline'
                     actual_frames = max_frames if max_frames > 0 else num_frames
-                    default_name = f"facemesh_{subject}_{test}_{actual_frames}frames"
+                    
+                    # Add filter suffix to default name
+                    filter_suffix = ""
+                    if filters_to_apply:
+                        filter_names = [f['filter'] for f in filters_to_apply]
+                        if 'kabsch_alignment' in filter_names:
+                            filter_suffix += "_aligned"
+                        if 'center_frames' in filter_names:
+                            filter_suffix += "_centered"
+                        if 'remove_outliers' in filter_names:
+                            filter_suffix += "_filtered"
+                    
+                    default_name = f"facemesh_{subject}_{test}_{actual_frames}frames{filter_suffix}"
                     
                     folder_name = st.text_input(
                         "Animation Folder Name",
@@ -691,7 +820,8 @@ class StreamlitInterface:
                                     folder_name=folder_name,
                                     color_mode=color_mode,
                                     max_frames=max_frames if max_frames > 0 else None,
-                                    z_scale=z_scale
+                                    z_scale=z_scale,
+                                    filters=filters_to_apply if enable_filtering else None
                                 )
                                 
                                 st.success(f"🎉 Animation created successfully!")
@@ -731,6 +861,12 @@ class StreamlitInterface:
                         with st.spinner("Loading preview..."):
                             try:
                                 frames_data = FileManager._parse_facial_landmark_csv(df, color_mode, z_scale)
+                                
+                                # Apply filters to preview if enabled
+                                if enable_filtering and filters_to_apply:
+                                    st.info(f"🔧 Applying {len(filters_to_apply)} filter(s) to preview...")
+                                    frames_data = DataFilters.apply_filter_chain(frames_data, filters_to_apply)
+                                
                                 if frames_data:
                                     points = frames_data[0]['points']
                                     colors = frames_data[0]['colors']
@@ -741,9 +877,12 @@ class StreamlitInterface:
                                         'source': 'facial_preview',
                                         'num_points': len(points),
                                         'color_mode': color_mode,
-                                        'z_scale': z_scale
+                                        'z_scale': z_scale,
+                                        'applied_filters': filters_to_apply if enable_filtering else []
                                     }
-                                    st.success(f"✅ Preview loaded: {len(points)} facial landmarks (Z-scale: {z_scale}x)")
+                                    
+                                    filter_info = f" (with {len(filters_to_apply)} filters)" if enable_filtering and filters_to_apply else ""
+                                    st.success(f"✅ Preview loaded: {len(points)} facial landmarks (Z-scale: {z_scale}x){filter_info}")
                                     
                             except Exception as e:
                                 st.error(f"❌ Preview error: {str(e)}")
