@@ -9,11 +9,11 @@ import streamlit as st
 import time
 import json
 from pathlib import Path
-from source.point_cloud_generator import PointCloudGenerator, get_shape_parameters
-from source.file_manager import FileManager
-from source.video_exporter import VideoExporter
-from source.desktop_launcher import DesktopLauncher
-from source.visualization import PointCloudVisualizer
+from point_cloud_generator import PointCloudGenerator, get_shape_parameters
+from file_manager import FileManager
+from video_exporter import VideoExporter
+from desktop_launcher import DesktopLauncher
+from visualization import PointCloudVisualizer
 import matplotlib.pyplot as plt
 
 
@@ -153,7 +153,7 @@ class StreamlitInterface:
             
             new_points = st.slider(
                 "Default Points",
-                100, 10000,
+                10, 100,
                 self.preferences['generation']['default_points']
             )
         
@@ -655,6 +655,21 @@ class StreamlitInterface:
                             help="Limit frames for faster processing (0 = use all frames)"
                         )
                     
+                    # Z-axis scaling control
+                    st.markdown("**📏 3D Proportions:**")
+                    z_scale = st.slider(
+                        "Z-Axis Scale Factor",
+                        min_value=0.1,
+                        max_value=10000.0,
+                        value=25.0,
+                        step=0.1,
+                        help="Scale Z-depth for better 3D visualization\n"
+                             "1.0 = original proportions (usually too flat)\n"
+                             "25.0 = optimal for facial data (user-tested)\n"
+                             "50-100+ = higher depth for analysis\n"
+                             "Facial data often needs significant scaling!"
+                    )
+                    
                     # Folder naming
                     subject = df.iloc[0].get('Subject Name', 'unknown') if 'Subject Name' in df.columns else 'unknown'
                     test = df.iloc[0].get('Test Name', 'baseline') if 'Test Name' in df.columns else 'baseline'
@@ -675,7 +690,8 @@ class StreamlitInterface:
                                     uploaded_file, 
                                     folder_name=folder_name,
                                     color_mode=color_mode,
-                                    max_frames=max_frames if max_frames > 0 else None
+                                    max_frames=max_frames if max_frames > 0 else None,
+                                    z_scale=z_scale
                                 )
                                 
                                 st.success(f"🎉 Animation created successfully!")
@@ -691,6 +707,7 @@ class StreamlitInterface:
                                         st.write(f"**Landmarks:** {metadata['landmarks_count']}")
                                     with col2:
                                         st.write(f"**Color Mode:** {metadata['color_mode']}")
+                                        st.write(f"**Z-Scale:** {metadata['z_scale']}x")
                                         st.write(f"**Duration:** {metadata['duration_seconds']:.1f}s")
                                         st.write(f"**Source:** {metadata['source_file']}")
                                 
@@ -713,7 +730,7 @@ class StreamlitInterface:
                     if st.checkbox("👁️ Preview First Frame", value=False):
                         with st.spinner("Loading preview..."):
                             try:
-                                frames_data = FileManager._parse_facial_landmark_csv(df, color_mode)
+                                frames_data = FileManager._parse_facial_landmark_csv(df, color_mode, z_scale)
                                 if frames_data:
                                     points = frames_data[0]['points']
                                     colors = frames_data[0]['colors']
@@ -723,9 +740,10 @@ class StreamlitInterface:
                                     st.session_state.config = {
                                         'source': 'facial_preview',
                                         'num_points': len(points),
-                                        'color_mode': color_mode
+                                        'color_mode': color_mode,
+                                        'z_scale': z_scale
                                     }
-                                    st.success(f"✅ Preview loaded: {len(points)} facial landmarks")
+                                    st.success(f"✅ Preview loaded: {len(points)} facial landmarks (Z-scale: {z_scale}x)")
                                     
                             except Exception as e:
                                 st.error(f"❌ Preview error: {str(e)}")

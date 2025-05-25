@@ -13,17 +13,18 @@ import sys
 import os
 from pathlib import Path
 
-# Fix import path for subprocess launches
-script_dir = Path(__file__).parent.absolute()
-project_root = script_dir.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-# Change working directory to project root for proper execution
-os.chdir(str(project_root))
+# Add current directory to path for module imports
+current_dir = Path(__file__).parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
 
 import open3d as o3d
-from source.viewer_core import ViewerCore, InteractiveControls, AnimationViewer, generate_sample_data
+
+try:
+    from viewer_core import ViewerCore, InteractiveControls, AnimationViewer, generate_sample_data
+except ImportError:
+    print("Warning: Could not import viewer_core. Some functionality may be limited.")
+    ViewerCore = None
 
 
 def load_point_cloud_from_file(file_path):

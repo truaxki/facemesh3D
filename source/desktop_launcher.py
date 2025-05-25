@@ -8,8 +8,8 @@ Enhanced with interactive animation player using Open3D callbacks.
 import os
 import subprocess
 from pathlib import Path
-from source.file_manager import FileManager
-from source.animation_player import play_animation_interactive
+from file_manager import FileManager
+from animation_player import play_animation_interactive
 
 
 class DesktopLauncher:

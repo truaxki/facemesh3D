@@ -77,7 +77,7 @@ class FileManager:
             raise RuntimeError(f"Error loading file: {str(e)}")
     
     @staticmethod
-    def _load_csv(uploaded_file):
+    def _load_csv(uploaded_file, z_scale=50.0):
         """Load CSV file - detect format and handle appropriately."""
         content = StringIO(uploaded_file.getvalue().decode('utf-8'))
         df = pd.read_csv(content)
@@ -86,7 +86,7 @@ class FileManager:
         if FileManager._is_facial_landmark_csv(df):
             # For time series data, we'll return the first frame as preview
             # and provide info about the full dataset
-            frames_data = FileManager._parse_facial_landmark_csv(df)
+            frames_data = FileManager._parse_facial_landmark_csv(df, 'movement', z_scale)
             if frames_data:
                 return frames_data[0]['points'], frames_data[0]['colors']
             else:
@@ -126,7 +126,7 @@ class FileManager:
         return points, colors
     
     @staticmethod
-    def _parse_facial_landmark_csv(df, color_mode='movement'):
+    def _parse_facial_landmark_csv(df, color_mode='movement', z_scale=50.0):
         """Parse facial landmark CSV into frame data."""
         columns = df.columns.tolist()
         
@@ -145,8 +145,10 @@ class FileManager:
         
         feat_indices = sorted(feat_indices)
         print(f"📊 Found {len(feat_indices)} facial landmarks (feat_0 to feat_{max(feat_indices)})")
+        print(f"🎯 Z-axis scaling factor: {z_scale}x")
         
         frames_data = []
+        z_values_all = []  # Collect Z values for scaling analysis
         
         for row_idx, row in df.iterrows():
             points = []
@@ -170,7 +172,10 @@ class FileManager:
                     
                     # Skip invalid points
                     if pd.notna(x) and pd.notna(y) and pd.notna(z):
-                        points.append([x, y, z])
+                        # Apply Z-axis scaling for better 3D visualization
+                        z_scaled = z * z_scale
+                        points.append([x, y, z_scaled])
+                        z_values_all.append(z)  # Store original Z for analysis
                         
                         # Extract movement data if available
                         movement = {'xdiff': 0, 'ydiff': 0, 'zdiff': 0}
@@ -179,7 +184,7 @@ class FileManager:
                         if ydiff_col in columns and pd.notna(row[ydiff_col]):
                             movement['ydiff'] = row[ydiff_col]
                         if zdiff_col in columns and pd.notna(row[zdiff_col]):
-                            movement['zdiff'] = row[zdiff_col]
+                            movement['zdiff'] = row[zdiff_col] * z_scale  # Scale Z movement too
                         
                         movement_data.append(movement)
             
@@ -199,6 +204,13 @@ class FileManager:
                     'frame_index': row_idx,
                     'movement_data': movement_data
                 })
+        
+        # Analyze Z-axis scaling results
+        if z_values_all:
+            z_values_all = np.array(z_values_all)
+            z_range = np.max(z_values_all) - np.min(z_values_all)
+            print(f"📏 Original Z range: {np.min(z_values_all):.4f} to {np.max(z_values_all):.4f} (range: {z_range:.4f})")
+            print(f"📏 Scaled Z range: {np.min(z_values_all)*z_scale:.4f} to {np.max(z_values_all)*z_scale:.4f} (range: {z_range*z_scale:.4f})")
         
         print(f"✅ Parsed {len(frames_data)} frames from facial landmark data")
         return frames_data
@@ -297,7 +309,7 @@ class FileManager:
         return colors
     
     @staticmethod
-    def create_facial_animation_folder(uploaded_file, folder_name=None, color_mode='movement', max_frames=None):
+    def create_facial_animation_folder(uploaded_file, folder_name=None, color_mode='movement', max_frames=None, z_scale=50.0):
         """Create animation folder from facial landmark CSV."""
         try:
             # Parse the CSV
@@ -307,7 +319,7 @@ class FileManager:
             if not FileManager._is_facial_landmark_csv(df):
                 raise ValueError("CSV does not contain facial landmark data")
             
-            frames_data = FileManager._parse_facial_landmark_csv(df, color_mode)
+            frames_data = FileManager._parse_facial_landmark_csv(df, color_mode, z_scale)
             
             if max_frames and len(frames_data) > max_frames:
                 # Subsample frames evenly
@@ -357,6 +369,7 @@ class FileManager:
                 'total_frames': int(len(frames_data)),
                 'saved_frames': int(saved_frames),
                 'color_mode': color_mode,
+                'z_scale': float(z_scale),
                 'landmarks_count': int(len(frames_data[0]['points'])) if frames_data else 0,
                 'subject': str(df.iloc[0].get('Subject Name', 'unknown')) if 'Subject Name' in df.columns else 'unknown',
                 'test': str(df.iloc[0].get('Test Name', 'baseline')) if 'Test Name' in df.columns else 'baseline',

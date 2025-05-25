@@ -1,0 +1,13 @@
+{
+  "type": "facial_landmark_animation",
+  "source_file": "e4-session8.csv",
+  "total_frames": 136,
+  "saved_frames": 136,
+  "color_mode": "depth",
+  "z_scale": 25.0,
+  "landmarks_count": 478,
+  "subject": "e26",
+  "test": "session8",
+  "duration_seconds": 129.0,
+  "created_timestamp": 1748133995.105023
+}
