@@ -639,13 +639,18 @@ class StreamlitInterface:
                     with col1:
                         color_mode = st.selectbox(
                             "Color Mode",
-                            ["movement", "depth", "regions", "single"],
+                            ["movement", "post_filter_movement", "depth", "regions", "single"],
                             index=0,
-                            help="movement = Color by motion intensity (recommended)\n"
+                            help="movement = Color by raw motion intensity from CSV\n"
+                                 "post_filter_movement = Color by frame-to-frame displacement AFTER filtering (recommended with filters)\n"
                                  "depth = Color by Z distance\n"
                                  "regions = Color by facial regions\n"
                                  "single = Single color for all points"
                         )
+                        
+                        # Show info about post-filter movement
+                        if color_mode == "post_filter_movement":
+                            st.info("🎯 **Post-Filter Movement**: Measures displacement between consecutive frames AFTER filters are applied. Perfect for isolating local facial movements after removing head motion with Kabsch alignment!")
                     
                     with col2:
                         max_frames = st.number_input(

@@ -332,6 +332,12 @@ class FileManager:
             if filters and len(filters) > 0:
                 print(f"🔧 Applying {len(filters)} filter(s) to animation data...")
                 frames_data = DataFilters.apply_filter_chain(frames_data, filters)
+                
+                # Calculate post-filter movement for better coloring
+                if color_mode == 'post_filter_movement':
+                    print(f"🎨 Calculating post-filter movement displacement...")
+                    frames_data = DataFilters.calculate_post_filter_movement(frames_data)
+                    frames_data = DataFilters.generate_post_filter_movement_colors(frames_data, 'percentile_95')
             
             # Generate folder name if not provided
             if not folder_name:

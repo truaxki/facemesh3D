@@ -345,6 +345,168 @@ class DataFilters:
         }
     
     @staticmethod
+    def calculate_post_filter_movement(frames_data: List[Dict]) -> List[Dict]:
+        """
+        Calculate frame-to-frame displacement after filters have been applied.
+        This measures actual local movement after removing rigid body motion.
+        
+        Args:
+            frames_data: List of filtered frame dictionaries
+            
+        Returns:
+            List of frame dictionaries with post-filter movement data
+        """
+        if len(frames_data) < 2:
+            print("⚠️ Need at least 2 frames to calculate movement")
+            return frames_data
+        
+        print(f"📐 Calculating post-filter movement for {len(frames_data)} frames...")
+        
+        enhanced_frames = []
+        all_displacements = []
+        
+        for i, frame_data in enumerate(frames_data):
+            enhanced_frame = frame_data.copy()
+            
+            if i == 0:
+                # First frame - no previous frame to compare
+                num_points = len(frame_data['points'])
+                enhanced_frame['post_filter_displacement'] = np.zeros(num_points)
+                enhanced_frame['displacement_magnitude'] = np.zeros(num_points)
+            else:
+                # Calculate displacement from previous frame
+                current_points = frame_data['points']
+                previous_points = frames_data[i-1]['points']
+                
+                if len(current_points) != len(previous_points):
+                    print(f"⚠️ Frame {i}: Point count mismatch, using zero displacement")
+                    enhanced_frame['post_filter_displacement'] = np.zeros(len(current_points))
+                    enhanced_frame['displacement_magnitude'] = np.zeros(len(current_points))
+                else:
+                    # Calculate 3D displacement vectors
+                    displacement_vectors = current_points - previous_points
+                    
+                    # Calculate displacement magnitudes
+                    displacement_magnitudes = np.linalg.norm(displacement_vectors, axis=1)
+                    
+                    enhanced_frame['post_filter_displacement'] = displacement_vectors
+                    enhanced_frame['displacement_magnitude'] = displacement_magnitudes
+                    
+                    # Collect for global statistics
+                    all_displacements.extend(displacement_magnitudes)
+            
+            enhanced_frames.append(enhanced_frame)
+        
+        # Calculate global displacement statistics for normalization
+        if all_displacements:
+            all_displacements = np.array(all_displacements)
+            
+            # Calculate statistics
+            mean_disp = np.mean(all_displacements)
+            std_disp = np.std(all_displacements)
+            p95_disp = np.percentile(all_displacements, 95)
+            p99_disp = np.percentile(all_displacements, 99)
+            max_disp = np.max(all_displacements)
+            
+            print(f"📊 Post-filter displacement statistics:")
+            print(f"   Mean: {mean_disp:.6f}")
+            print(f"   Std:  {std_disp:.6f}")
+            print(f"   95th percentile: {p95_disp:.6f}")
+            print(f"   99th percentile: {p99_disp:.6f}")
+            print(f"   Max: {max_disp:.6f}")
+            
+            # Add normalization metadata to all frames
+            normalization_stats = {
+                'mean_displacement': mean_disp,
+                'std_displacement': std_disp,
+                'p95_displacement': p95_disp,
+                'p99_displacement': p99_disp,
+                'max_displacement': max_disp
+            }
+            
+            for frame in enhanced_frames:
+                frame['displacement_stats'] = normalization_stats
+        
+        print(f"✅ Post-filter movement calculation complete!")
+        return enhanced_frames
+    
+    @staticmethod
+    def generate_post_filter_movement_colors(frames_data: List[Dict], normalization_method: str = 'percentile_95') -> List[Dict]:
+        """
+        Generate colors based on post-filter movement displacement.
+        
+        Args:
+            frames_data: List of frame dictionaries with displacement data
+            normalization_method: 'percentile_95', 'percentile_99', 'std_dev', or 'max'
+            
+        Returns:
+            List of frame dictionaries with updated colors
+        """
+        print(f"🎨 Generating post-filter movement colors using {normalization_method} normalization...")
+        
+        colored_frames = []
+        
+        for frame_data in frames_data:
+            colored_frame = frame_data.copy()
+            
+            if 'displacement_magnitude' not in frame_data:
+                print("⚠️ No displacement data found, using default colors")
+                num_points = len(frame_data['points'])
+                colored_frame['colors'] = np.ones((num_points, 3)) * [0.7, 0.7, 0.9]
+                colored_frames.append(colored_frame)
+                continue
+            
+            displacement_magnitudes = frame_data['displacement_magnitude']
+            stats = frame_data.get('displacement_stats', {})
+            
+            # Choose normalization strategy
+            if normalization_method == 'percentile_95':
+                norm_value = stats.get('p95_displacement', np.percentile(displacement_magnitudes, 95))
+            elif normalization_method == 'percentile_99':
+                norm_value = stats.get('p99_displacement', np.percentile(displacement_magnitudes, 99))
+            elif normalization_method == 'std_dev':
+                mean_val = stats.get('mean_displacement', np.mean(displacement_magnitudes))
+                std_val = stats.get('std_displacement', np.std(displacement_magnitudes))
+                norm_value = mean_val + 2 * std_val  # 2 standard deviations
+            elif normalization_method == 'max':
+                norm_value = stats.get('max_displacement', np.max(displacement_magnitudes))
+            else:
+                norm_value = stats.get('p95_displacement', np.percentile(displacement_magnitudes, 95))
+            
+            # Avoid division by zero
+            if norm_value == 0:
+                norm_value = 1.0
+            
+            # Normalize displacement magnitudes
+            normalized_displacements = np.clip(displacement_magnitudes / norm_value, 0, 1)
+            
+            # Generate heat map colors: blue (static) -> green -> yellow -> red (high movement)
+            colors = np.zeros((len(displacement_magnitudes), 3))
+            
+            for i, intensity in enumerate(normalized_displacements):
+                if intensity < 0.25:  # Very low movement - blue to cyan
+                    colors[i] = [0, intensity*4, 1.0]
+                elif intensity < 0.5:  # Low movement - cyan to green
+                    t = (intensity - 0.25) * 4
+                    colors[i] = [0, 1.0, 1.0 - t]
+                elif intensity < 0.75:  # Medium movement - green to yellow
+                    t = (intensity - 0.5) * 4
+                    colors[i] = [t, 1.0, 0]
+                else:  # High movement - yellow to red
+                    t = (intensity - 0.75) * 4
+                    colors[i] = [1.0, 1.0 - t, 0]
+            
+            colored_frame['colors'] = colors
+            colored_frame['normalized_displacements'] = normalized_displacements
+            colored_frame['normalization_method'] = normalization_method
+            colored_frame['normalization_value'] = norm_value
+            
+            colored_frames.append(colored_frame)
+        
+        print(f"✅ Post-filter movement coloring complete!")
+        return colored_frames
+    
+    @staticmethod
     def apply_filter_chain(frames_data: List[Dict], filter_chain: List[Dict]) -> List[Dict]:
         """
         Apply a chain of filters in sequence.
