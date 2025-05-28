@@ -4,200 +4,189 @@
 **Context**: Immediate access to critical information for AI agents
 **Tags**: quick-reference, cheat-sheet, agent-guide
 **Related**: All memory components
+**Updated**: 2025-01-28T13:10:00Z (Dev branch refactoring)
 
 ## Current System Status (At-a-Glance)
 
 ### ✅ System Health
 - **Application**: Running on `localhost:8507`
-- **Status**: Stable, fully functional
-- **Latest Changes**: Prominent loading bars, simplified settings
-- **Export Pipeline**: Working without stalling issues
-- **UI Layout**: Optimized sidebar design achieved
+- **Status**: Refactored for microexpression analysis focus
+- **Branch**: `dev` (major UI simplification completed)
+- **Latest Changes**: Streamlined 3-tab interface, 52% code reduction
+- **UI Layout**: Import → Animation → Analysis tabs
 
 ### 🔧 Recent Accomplishments
-- Perfect sidebar layout with all controls consolidated
-- Prominent loading bars for export progress
-- Complete emoji removal (fixed matplotlib stalling)
-- Simplified settings focused on core functionality
-- Comprehensive memory system established
+- Refactored UI to focus on facial microexpression analysis
+- Reduced codebase by 52% (985 → 475 lines)
+- Created data/read/ and data/write/ directory structure
+- Fixed animation naming to use source filename
+- Auto-launch interactive player after animation creation
+- Renamed "post_filter_movement" to "local_movement"
 
 ## Critical File Locations
 
 ### Primary Application
-- **Main Interface**: `source/streamlit_open3d_launcher.py` (988+ lines)
-- **Desktop Viewer**: `source/open3d_desktop_viewer.py` (referenced)
-- **Test Files**: `test_export_fix.py` (working export test)
+- **Main Interface**: `source/streamlit_interface.py` (475 lines - refactored)
+- **Animation Player**: `source/animation_player.py` (unchanged)
+- **Entry Point**: `main.py` (unchanged)
+
+### Data Organization
+- **Input CSVs**: `data/read/` (place facial landmark CSVs here)
+- **Output Files**: `data/write/` (animations, videos saved here)
+- **Legacy Animations**: `animations/` (still compatible)
 
 ### Memory System
+- **Refactor Plan**: `memory/development/ui_refactor_plan.md`
+- **Refactor Details**: `memory/features/ui_refactoring.md` (NEW)
 - **Architecture**: `memory/architecture/system_overview.md`
 - **Components**: `memory/components/streamlit_interface.md`
-- **Workflows**: `memory/workflows/export_pipeline.md`
-- **Issues**: `memory/issues/ui_redesign_history.md`
-- **Session**: `memory/user_interactions/current_session.md`
 
 ## Essential Technical Knowledge
 
 ### Application Startup
 ```bash
-# Kill existing processes and restart
-Get-Process | Where-Object {$_.ProcessName -like "*python*" -or $_.ProcessName -like "*streamlit*"} | Stop-Process -Force; Start-Sleep 2; streamlit run source/streamlit_open3d_launcher.py --server.port 8507
+# Standard launch
+python main.py
+
+# Or direct streamlit
+streamlit run source/streamlit_interface.py --server.port 8507
 ```
 
-### Key Session State Variables
+### Simplified Workflow (2 clicks!)
+1. **Import Tab**: Select CSV from data/read/
+2. **Animation Tab**: Click "🎬 Create Facial Animation"
+3. **Auto-launch**: Interactive player opens automatically
+
+### Key Session State Variables (Simplified)
 ```python
-st.session_state.export_video_requested     # Export trigger
-st.session_state.video_export_status        # Progress messages
-st.session_state.frames_data                # Animation frames
-st.session_state.animation_fps              # Playback speed
+st.session_state.csv_file_path      # Selected CSV file
+st.session_state.csv_data           # Loaded dataframe
+st.session_state.frames_data        # Animation frames
+st.session_state.animation_created  # Animation ready flag
+st.session_state.color_mode         # 'local_movement' or 'single'
 ```
 
-### Export Pipeline Critical Points
+### Fixed Parameters (No UI controls)
 ```python
-# NO EMOJI CHARACTERS in matplotlib (causes stalling)
-ax.set_title(f'Frame {i+1}/{len(frames_data)} | {len(points)} points')
-
-# Progress tracking pattern
-st.session_state.video_export_status = f"Rendering frame {i+1}/{len(frames_data)} ({progress*100:.0f}%)"
+z_scale = 25.0                      # Optimal for facial data
+filter = 'kabsch_alignment'         # Always enabled
+baseline_frame = 0                  # First frame reference
 ```
 
-## User Preferences (CRITICAL)
+## User Preferences (SIMPLIFIED)
 
-### UI Design Requirements
-- **Layout**: Sidebar (controls) + Main area (visualization only)
-- **Progress**: Prominent, large loading bars with clear status
-- **Simplicity**: Remove unnecessary settings, focus on core features
-- **Separation**: All controls in sidebar, pure visualization in main area
+### New Workflow
+- **Input**: Place CSVs in `data/read/`
+- **Process**: 2 clicks to animation
+- **Output**: Auto-saved to `data/write/`
+- **Viewer**: Auto-launches interactive player
 
-### Communication Style
-- **Direct**: User provides specific, actionable feedback
-- **Visual**: Screenshots used to communicate layout issues
-- **Iterative**: Expects multiple refinement cycles
-- **Quality-Focused**: Production-ready implementations required
+### Removed Features
+- ❌ Shape generation (sphere, torus, etc.)
+- ❌ Generic file upload
+- ❌ User preferences system
+- ❌ Multiple filter options
+- ❌ Adjustable Z-scale
+- ❌ Dual viewer choice
+
+### Color Mode Naming
+- **Old**: "post_filter_movement"
+- **New**: "local_movement" (clearer for users)
 
 ## Common Issues and Solutions
 
-### Export Stalling
-**Symptom**: Process hangs during MP4 export
-**Cause**: Emoji characters in matplotlib plots
-**Solution**: Remove ALL emoji from plot titles and status messages
-**Status**: ✅ RESOLVED
+### CSV Files Not Showing
+**Problem**: No files in dropdown
+**Solution**: Place CSV files in `data/read/` directory
 
-### Layout Problems
-**Pattern**: User feedback → Specific layout requirements → Implementation
-**Latest**: Complete sidebar consolidation achieved
-**Status**: ✅ OPTIMAL LAYOUT ACHIEVED
+### Animation Naming
+**Old Pattern**: `facemesh_e26_session2_136frames`
+**New Pattern**: `{source_filename}_{frames}frames_{timestamp}`
+**Example**: `subject01_trial3_137frames_20250128_1240`
 
-### Progress Feedback
-**Problem**: Export progress not visible enough
-**Solution**: Large "## Exporting Video..." header with prominent progress bar
-**Status**: ✅ IMPLEMENTED
+### Player Launch
+**Change**: Now auto-launches interactive player
+**No need**: To click separate viewer buttons
 
 ## Emergency Procedures
 
 ### If Application Won't Start
 1. Check port availability: `netstat -ano | findstr :8507`
-2. Kill processes: `Get-Process | Where-Object {...} | Stop-Process -Force`
-3. Wait 2 seconds: `Start-Sleep 2`
-4. Restart: `streamlit run source/streamlit_open3d_launcher.py --server.port 8507`
+2. Ensure data directories exist: `data/read/` and `data/write/`
+3. Restart: `python main.py`
 
-### If Export Fails
-1. Check for emoji characters in matplotlib code
-2. Verify temporary directory permissions
-3. Test with simple animation (6 frames)
-4. Check codec availability (mp4v, XVID, MJPG)
-
-### If UI Layout Broken
-1. Reference `memory/issues/ui_redesign_history.md` for correct layout
-2. Ensure all controls in sidebar, visualization in main area
-3. Check session state key conflicts
-4. Verify component placement matches user requirements
+### If Animation Fails
+1. Verify CSV format (feat_0_x, feat_0_y, feat_0_z, ...)
+2. Check for 478 landmarks
+3. Ensure CSV is in `data/read/`
+4. Check `data/write/` permissions
 
 ## Code Patterns to Follow
 
-### UI Layout Structure
+### Tab Structure
 ```python
-# CORRECT PATTERN - Sidebar + Main Area
-with st.sidebar:
-    # ALL controls here
-    st.subheader("Animation Controls")
-    frame_idx = st.slider("Frame", 0, len(frames_data)-1, 0)
-    auto_play = st.checkbox("Auto Play")
-    if st.button("Export MP4"):
-        st.session_state.export_video_requested = True
-
-# Main area - ONLY visualization
-if export_in_progress:
-    st.markdown("## Exporting Video...")
-    progress_bar = st.progress(0)
-    status = st.empty()
+# Three tabs only
+tab1, tab2, tab3 = st.tabs(["Import", "Animation", "Analysis"])
 ```
 
-### Progress Display Pattern
+### File Handling
 ```python
-# PROMINENT LOADING BAR
-if st.session_state.get('export_video_requested', False):
-    st.markdown("---")
-    st.markdown("## Exporting Video...")
-    export_progress = st.progress(0)
-    export_status = st.empty()
-    current_status = st.session_state.get('video_export_status', 'Starting...')
-    export_status.markdown(f"### {current_status}")
+# Input files
+csv_files = list(Path("data/read").glob("*.csv"))
+
+# Output files
+save_path = Path("data/write") / animation_name
 ```
 
-### Error Prevention
+### Simplified Animation Creation
 ```python
-# NO EMOJI in matplotlib
-ax.set_title(f'Frame {i+1}/{total} | {len(points)} points')  # ✅ CORRECT
-
-# NOT THIS:
-ax.set_title(f'🎬 Frame {i+1}/{total}')  # ❌ CAUSES STALLING
+# No configuration needed - just create
+frames_data = parse_csv_with_defaults()
+frames_data = apply_kabsch_alignment(frames_data)
+frames_data = apply_local_movement_colors(frames_data)
+launch_interactive_player(frames_data)
 ```
 
-## Memory System Usage
+## Memory System Updates
 
-### For Context Understanding
-1. Start with `memory/user_interactions/current_session.md`
-2. Check `memory/architecture/system_overview.md` for system context
-3. Review specific component/workflow docs as needed
+### New Documentation
+- `memory/features/ui_refactoring.md` - Refactoring details
+- `memory/development/ui_refactor_plan.md` - Planning document
 
-### For Problem Solving
-1. Check `memory/issues/ui_redesign_history.md` for similar problems
-2. Consult `memory/workflows/export_pipeline.md` for process issues
-3. Reference `memory/components/streamlit_interface.md` for implementation
-
-### For Feature Development
-1. Review user preferences in `memory/user_interactions/current_session.md`
-2. Check system architecture in `memory/architecture/system_overview.md`
-3. Follow established patterns from existing components
+### Updated Documentation
+- This file (quick_reference.md)
+- `memory/components/streamlit_interface.md` - Added refactor notice
 
 ## Success Metrics
 
-### User Satisfaction Indicators
-- ✅ Specific positive feedback on implementations
-- ✅ Continued engagement through iterations
-- ✅ Investment in memory system creation
-- ✅ Willingness to restart processes for improvements
+### Refactoring Success
+- ✅ 52% code reduction (985 → 475 lines)
+- ✅ 2-click workflow (was 5-7 clicks)
+- ✅ Clear focus on microexpressions
+- ✅ Automatic optimal settings
+- ✅ Better file organization
 
-### Technical Success Indicators
-- ✅ Application runs without stalling
-- ✅ Export pipeline completes successfully
-- ✅ UI layout matches user requirements
-- ✅ Progress feedback is prominent and clear
+### Performance
+- Same visualization quality
+- Same export capabilities
+- Faster workflow
+- Less cognitive load
 
 ## Final Notes for Future Agents
 
-⚠️ **CRITICAL**: This user values quality over speed. Implement solutions thoroughly.
+⚠️ **BRANCH**: Currently on `dev` branch with major refactoring
 
-📋 **PROCESS**: Always reference memory system before making changes.
+📋 **FOCUS**: System now specifically for facial microexpression analysis
 
-🎨 **UI**: Sidebar layout is FINAL - don't suggest alternatives.
+🎯 **SIMPLICITY**: Removed all non-essential features
 
-🔧 **TECHNICAL**: No emoji in matplotlib code - causes export stalling.
+🔧 **DEFAULTS**: Optimal settings are now hardcoded
 
-📚 **DOCUMENTATION**: Update memory system when making changes.
+📁 **ORGANIZATION**: Use data/read/ and data/write/ directories
 
 ## Metadata
 - Created: 2025-01-24T18:15:00Z
-- Updated: 2025-01-24T18:15:00Z
+- Updated: 2025-01-28T13:10:00Z
+- Branch: dev
 - Confidence: High
-- Source: Complete session analysis and memory system synthesis 
+- Source: Complete refactoring implementation 

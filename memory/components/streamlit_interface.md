@@ -1,9 +1,13 @@
 # Streamlit Interface Component
 
-**Type**: Long-term
-**Context**: Primary user interface component in facemesh system
-**Tags**: streamlit, ui, interface, layout, session-state
-**Related**: [[architecture-system-overview]], [[workflows-export-pipeline]], [[issues-ui-redesign-history]]
+**Type**: Component Documentation
+**Context**: Primary web interface implementation
+**Tags**: interface, streamlit, ui-components, controls
+**Related**: workflows/export_pipeline.md, issues/ui_redesign_history.md
+
+> **⚠️ REFACTORED**: This component was significantly refactored on 2025-01-28 to focus on facial microexpression analysis.  
+> See `memory/features/ui_refactoring.md` for details about the changes.  
+> The documentation below reflects the previous version. Core concepts remain similar but the implementation is now much simpler.
 
 ## Component Overview
 
