@@ -2,6 +2,7 @@
 
 Handles matplotlib-based preview plotting for point clouds.
 Clean separation from the main UI logic.
+Enhanced with proper camera orientation for facial landmark data.
 """
 
 import numpy as np
@@ -37,6 +38,11 @@ class PointCloudVisualizer:
         ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
         ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
         ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
+        
+        # Fix orientation - proper front-facing view for facial data
+        # elev=20 (slightly above), azim=30 (angled view), roll=0 (upright)
+        # Changed to azim=30 for better depth perception while keeping face visible
+        ax.view_init(elev=20, azim=30, roll=0)
         
         return fig
     
@@ -75,6 +81,10 @@ class PointCloudVisualizer:
             ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
             ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
             ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
+        
+        # Fix orientation - proper front-facing view for facial data
+        # Changed to azim=30 for better depth perception while keeping face visible
+        ax.view_init(elev=20, azim=30, roll=0)
         
         return fig
     
@@ -139,6 +149,10 @@ class PointCloudVisualizer:
             ax.set_xlabel('')
             ax.set_ylabel('')
             ax.set_zlabel('')
+            
+            # Fix orientation for thumbnails - consistent view
+            # Changed to azim=30 for better depth perception while keeping face visible
+            ax.view_init(elev=20, azim=30, roll=0)
         
         plt.tight_layout()
         return fig
@@ -199,6 +213,10 @@ class PointCloudVisualizer:
             ax.set_xlabel('')
             ax.set_ylabel('')
             ax.set_zlabel('')
+            
+            # Fix orientation for strip view
+            # Changed to azim=30 for better depth perception while keeping face visible
+            ax.view_init(elev=20, azim=30, roll=0)
         
         plt.tight_layout()
         return fig
@@ -233,5 +251,49 @@ class PointCloudVisualizer:
                 'Good for static views',
                 'Easy integration'
             ],
-            'recommendation': 'Use desktop viewer for full interactivity'
-        } 
+            'recommendation': 'Use desktop viewer for full interactivity',
+            'orientation_fix': 'Added proper camera angles (elev=20, azim=45) for facial data'
+        }
+    
+    @staticmethod
+    def create_orientation_comparison_plot(points, colors=None):
+        """Create a comparison plot showing different orientations."""
+        fig = plt.figure(figsize=(15, 5))
+        
+        # Original (problematic) view
+        ax1 = fig.add_subplot(131, projection='3d')
+        if colors is not None:
+            ax1.scatter(points[:, 0], points[:, 1], points[:, 2], c=colors, s=1, alpha=0.7)
+        else:
+            ax1.scatter(points[:, 0], points[:, 1], points[:, 2], c=points[:, 2], cmap='viridis', s=1, alpha=0.7)
+        ax1.set_title('Original View\n(Often upside-down)')
+        # Default matplotlib view (often problematic)
+        
+        # Fixed front view
+        ax2 = fig.add_subplot(132, projection='3d')
+        if colors is not None:
+            ax2.scatter(points[:, 0], points[:, 1], points[:, 2], c=colors, s=1, alpha=0.7)
+        else:
+            ax2.scatter(points[:, 0], points[:, 1], points[:, 2], c=points[:, 2], cmap='viridis', s=1, alpha=0.7)
+        ax2.set_title('Fixed Front View\n(elev=20, azim=30)')
+        ax2.view_init(elev=20, azim=30, roll=0)
+        
+        # Side view
+        ax3 = fig.add_subplot(133, projection='3d')
+        if colors is not None:
+            ax3.scatter(points[:, 0], points[:, 1], points[:, 2], c=colors, s=1, alpha=0.7)
+        else:
+            ax3.scatter(points[:, 0], points[:, 1], points[:, 2], c=points[:, 2], cmap='viridis', s=1, alpha=0.7)
+        ax3.set_title('Side View\n(elev=0, azim=0)')
+        ax3.view_init(elev=0, azim=0, roll=0)
+        
+        # Set consistent bounds for all
+        max_range = np.max(np.ptp(points, axis=0)) / 2
+        mid = np.mean(points, axis=0)
+        for ax in [ax1, ax2, ax3]:
+            ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
+            ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
+            ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
+        
+        plt.tight_layout()
+        return fig 

@@ -37,7 +37,7 @@ class StreamlitInterface:
         # Default preferences
         self.default_prefs = {
             'animation': {
-                'default_fps': 15,
+                'default_fps': 1,
                 'default_view_mode': 'Thumbnail Grid',
                 'default_max_thumbnails': 16,
                 'default_grid_columns': 4,
@@ -431,21 +431,81 @@ class StreamlitInterface:
             
             # Help info for desktop viewers
             with st.expander("ℹ️ Viewer Comparison", expanded=False):
-                st.markdown("**🖥️ File Viewer:**")
-                st.markdown("- Traditional viewer")
-                st.markdown("- Loads frames from files")
+                st.markdown("**🖥️ File Viewer (Traditional):**")
+                st.markdown("- Loads frames from temporary PLY files")
+                st.markdown("- **Terminal-based controls** (type commands)")
+                st.markdown("- Type 'space' + ENTER to play/pause")
+                st.markdown("- Type 'n' + ENTER for next frame")
+                st.markdown("- Type 'p' + ENTER for previous frame")
                 st.markdown("- Simple and reliable")
                 st.markdown("")
-                st.markdown("**🎬 Interactive Player:**")
-                st.markdown("- Enhanced with Open3D callbacks")
+                st.markdown("**🎬 Interactive Player (Enhanced):**")
+                st.markdown("- Memory-based animation (no file I/O)")
+                st.markdown("- **In-window keyboard controls**")
+                st.markdown("- Press SPACEBAR in 3D window to play/pause")
+                st.markdown("- Press N/P in 3D window for next/prev frame")
+                st.markdown("- Press 0/9 for first/last frame")
+                st.markdown("- Press +/- for speed control")
                 st.markdown("- Smooth real-time playback")
-                st.markdown("- **In-window controls** (SPACEBAR, N/P, etc.)")
-                st.markdown("- Variable speed, reverse, frame stepping")
-                st.markdown("- No file I/O overhead")
-                st.markdown("- Better for exploration and analysis")
+                st.markdown("- Better for frame-by-frame analysis")
+                
+                st.info("💡 **For frame-by-frame control**: Use the Interactive Player and press N/P keys in the 3D window!")
         
         # Main area - visualization based on settings (no redundant controls)
         st.subheader("Animation Viewer")
+        
+        # Add frame-by-frame controls in web interface
+        if st.session_state.view_mode == "Single Frame":
+            st.markdown("**🎮 Web Frame-by-Frame Controls:**")
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                if st.button("⏮️ First"):
+                    st.session_state.current_frame_idx = 0
+                    st.rerun()
+            with col2:
+                if st.button("⏪ Prev"):
+                    st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
+                    st.rerun()
+            with col3:
+                st.write(f"Frame {st.session_state.current_frame_idx + 1}")
+            with col4:
+                if st.button("Next ⏩"):
+                    st.session_state.current_frame_idx = min(len(frames_data) - 1, st.session_state.current_frame_idx + 1)
+                    st.rerun()
+            with col5:
+                if st.button("Last ⏭️"):
+                    st.session_state.current_frame_idx = len(frames_data) - 1
+                    st.rerun()
+            
+            # Frame slider for single frame mode
+            frame_idx = st.slider(
+                "Select Frame", 
+                0, len(frames_data)-1, 
+                st.session_state.current_frame_idx,
+                help="Navigate through animation frames"
+            )
+            if frame_idx != st.session_state.current_frame_idx:
+                st.session_state.current_frame_idx = frame_idx
+                st.rerun()
+        
+        # Orientation fix notification
+        st.info("🔄 **Orientation Fixed**: All matplotlib views now use proper camera angles (elev=20°, azim=45°) to prevent upside-down display!")
+        
+        # Add orientation comparison option
+        if st.checkbox("👁️ Show Orientation Comparison", help="Compare different camera angles to see the orientation fix"):
+            current_frame = st.session_state.get('current_frame_idx', 0)
+            frame_data = frames_data[current_frame]
+            
+            with st.spinner("Generating orientation comparison..."):
+                fig = PointCloudVisualizer.create_orientation_comparison_plot(
+                    frame_data['points'], frame_data['colors']
+                )
+                st.pyplot(fig)
+                plt.close(fig)
+            
+            st.markdown("**Left**: Default matplotlib view (often upside-down)")
+            st.markdown("**Center**: Fixed view with proper orientation ✅")
+            st.markdown("**Right**: Side view for reference")
         
         # Handle video export
         if st.session_state.get('export_requested', False):
@@ -488,38 +548,6 @@ class StreamlitInterface:
         else:  # Single Frame mode
             current_frame = st.session_state.current_frame_idx
             st.markdown(f"**Single Frame View** - Frame {current_frame + 1} of {len(frames_data)}")
-            
-            # Frame navigation controls
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1:
-                if st.button("⏮️ First"):
-                    st.session_state.current_frame_idx = 0
-                    st.rerun()
-            with col2:
-                if st.button("⏪ Prev"):
-                    st.session_state.current_frame_idx = max(0, current_frame - 1)
-                    st.rerun()
-            with col3:
-                st.write(f"Frame {current_frame + 1}")
-            with col4:
-                if st.button("Next ⏩"):
-                    st.session_state.current_frame_idx = min(len(frames_data) - 1, current_frame + 1)
-                    st.rerun()
-            with col5:
-                if st.button("Last ⏭️"):
-                    st.session_state.current_frame_idx = len(frames_data) - 1
-                    st.rerun()
-            
-            # Frame slider for single frame mode
-            frame_idx = st.slider(
-                "Select Frame", 
-                0, len(frames_data)-1, 
-                st.session_state.current_frame_idx,
-                help="Navigate through animation frames"
-            )
-            if frame_idx != st.session_state.current_frame_idx:
-                st.session_state.current_frame_idx = frame_idx
-                st.rerun()
             
             # Show single frame
             bounds = PointCloudVisualizer.calculate_animation_bounds(frames_data)

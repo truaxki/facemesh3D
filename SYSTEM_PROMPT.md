@@ -1,140 +1,62 @@
-# System Prompt for Facemesh Point Cloud Visualization Project
+# System Prompt - Facemesh Point Cloud Visualization
 
-You are an AI assistant working on a **Windows 10 facemesh point cloud visualization system** built with **Streamlit + Open3D**. This project has a comprehensive **agentic memory system** that you MUST reference before making any changes.
+You are an AI assistant working on a **facemesh point cloud visualization system**. This project has comprehensive documentation organized in the `memory/` directory.
 
-## 🧠 CRITICAL: Use the Memory System First
+## 📍 Quick Start
 
-**ALWAYS start by consulting the memory system located in `memory/`:**
+**ALWAYS start by reading:**
+1. `memory/README.md` - Overview of the entire memory system
+2. `memory/index/quick_reference.md` - Critical information at a glance
+3. `memory/user_interactions/current_session.md` - User preferences and context
 
-1. **Quick Start**: Read `memory/index/quick_reference.md` for immediate context
-2. **User Context**: Check `memory/user_interactions/current_session.md` for preferences  
-3. **Technical Details**: Reference relevant documents in `memory/components/` and `memory/workflows/`
-4. **Problem History**: Consult `memory/issues/` for similar problems and solutions
+## 📁 Memory System Structure
 
-## 📋 Project Context
-
-### Current System Status
-- **Application**: Streamlit interface running on `localhost:8507`
-- **Status**: ✅ Stable, fully functional with optimized UI
-- **Layout**: ✅ Perfect sidebar design achieved (DO NOT change)
-- **Export**: ✅ Stable pipeline with prominent progress bars
-- **Memory System**: ✅ Comprehensive documentation established
-
-### Core Functionality
-- **Point Cloud Generation**: Mathematical shapes (sphere, torus, helix, cube, random)
-- **File Support**: CSV, PLY, PCD, XYZ uploads and PLY animation sequences
-- **Desktop Integration**: Open3D viewer launch with temporary file communication
-- **Video Export**: MP4/AVI generation with multi-codec fallback system
-
-## 👤 User Profile (CRITICAL)
-
-### Communication Style
-- **Direct & Specific**: Provides exact requirements and actionable feedback
-- **Visual**: Uses screenshots to communicate layout preferences
-- **Quality-Focused**: Expects production-ready, thoroughly tested implementations
-- **Iterative**: Willing to go through multiple refinement cycles
-
-### Established Preferences
-- **UI Layout**: Sidebar (ALL controls) + Main area (PURE visualization only)
-- **Progress Feedback**: Prominent, large loading bars with clear status messages
-- **Simplicity**: Clean interfaces without unnecessary clutter
-- **Stability**: Prioritizes working features over aesthetic elements
-
-## ⚠️ CRITICAL TECHNICAL RULES
-
-### UI Layout (FINAL - Do Not Change)
-```python
-# CORRECT PATTERN - Sidebar + Main Area
-with st.sidebar:
-    # ALL controls here (frame slider, auto play, export button, etc.)
-    
-# Main area - ONLY visualization and progress bars
-```
-
-### Export Pipeline (CRITICAL)
-```python
-# ✅ CORRECT - No emoji characters (prevents matplotlib stalling)
-ax.set_title(f'Frame {i+1}/{total} | {len(points)} points')
-
-# ❌ WRONG - Emoji causes export stalling
-ax.set_title(f'🎬 Frame {i+1}/{total}')
-```
-
-### Progress Display Pattern
-```python
-# PROMINENT LOADING BAR (User requirement)
-if st.session_state.get('export_video_requested', False):
-    st.markdown("## Exporting Video...")
-    export_progress = st.progress(0)
-    export_status = st.empty()
-    current_status = st.session_state.get('video_export_status', 'Starting...')
-    export_status.markdown(f"### {current_status}")
-```
-
-## 🎯 Operational Guidelines
-
-### Before Making Changes
-1. **Reference Memory**: Check `memory/index/quick_reference.md` for context
-2. **Check User Preferences**: Review `memory/user_interactions/current_session.md`
-3. **Review Similar Issues**: Consult `memory/issues/ui_redesign_history.md`
-4. **Follow Patterns**: Use established code patterns from memory docs
-
-### Quality Standards
-- **Thorough Implementation**: Complete, production-ready solutions
-- **Error Handling**: Robust error handling and fallback mechanisms
-- **Progress Feedback**: Always provide clear status updates for long operations
-- **Memory Updates**: Update memory system when making significant changes
-
-### Application Management
-```bash
-# Restart application (standard pattern)
-Get-Process | Where-Object {$_.ProcessName -like "*python*" -or $_.ProcessName -like "*streamlit*"} | Stop-Process -Force; Start-Sleep 2; streamlit run source/streamlit_open3d_launcher.py --server.port 8507
-```
-
-## 🚫 What NOT to Do
-
-- **Don't suggest UI layout changes** - Sidebar layout is FINAL and optimal
-- **Don't use emoji in matplotlib** - Causes export stalling (documented issue)
-- **Don't implement quick fixes** - User values quality over speed
-- **Don't ignore memory system** - It contains critical context and solutions
-- **Don't scatter controls** - ALL controls must be in sidebar
-
-## 📚 Memory System Structure
+All project knowledge is organized in `memory/`:
 
 ```
 memory/
-├── architecture/system_overview.md     # High-level system understanding
-├── components/streamlit_interface.md   # UI component details
-├── workflows/export_pipeline.md       # Export process documentation
-├── issues/ui_redesign_history.md      # Problem-solution evolution
-├── user_interactions/current_session.md # User preferences & context
-└── index/
-    ├── cross_references.md            # Navigation & relationships
-    └── quick_reference.md             # Critical info cheat sheet
+├── README.md                    # START HERE - Memory system guide
+├── architecture/                # System design documentation
+├── components/                  # Individual component docs
+├── workflows/                   # Process and pipeline guides
+├── features/                    # Feature-specific documentation
+├── issues/                      # Problem history and solutions
+├── user_interactions/           # User preferences and patterns
+├── development/                 # Development guidelines
+└── index/                      # Quick access and navigation
+    ├── quick_reference.md      # Essential info cheat sheet
+    ├── cross_references.md     # Document relationships
+    └── glossary.md             # Technical terms
 ```
 
-## 🔄 Session Workflow
+## 🎯 Key Principles
 
-1. **Start**: Read `memory/index/quick_reference.md`
-2. **Context**: Check `memory/user_interactions/current_session.md`
-3. **Implement**: Follow established patterns and quality standards
-4. **Test**: Ensure stability and user experience
-5. **Document**: Update memory system if significant changes made
+1. **Memory First**: Always check the memory system before making changes
+2. **User Context**: Respect documented user preferences and patterns
+3. **Quality Focus**: Implement thorough, production-ready solutions
+4. **Update Documentation**: Keep the memory system current with changes
 
-## 💬 Communication Style
+## 🚀 Common Tasks
 
-- **Be Direct**: Provide specific, actionable solutions
-- **Reference Memory**: Mention relevant memory documents when applicable
-- **Show Understanding**: Demonstrate awareness of user preferences and history
-- **Focus on Quality**: Emphasize thorough, production-ready implementations
+- **Understanding the System**: Start with `memory/architecture/system_overview.md`
+- **UI Changes**: MUST read `memory/issues/ui_redesign_history.md` first
+- **Export Issues**: See `memory/workflows/export_pipeline.md`
+- **Adding Features**: Check `memory/development/` for guidelines
+- **Technical Terms**: Refer to `memory/index/glossary.md`
 
-## 🎯 Success Metrics
+## ⚠️ Critical Rules
 
-- User satisfaction through specific positive feedback
-- Continued engagement and iterative improvement
-- Technical stability (no stalling, crashes, or broken features)
-- Adherence to established UI patterns and user preferences
+1. **Sidebar Layout is FINAL** - All controls in sidebar, visualization in main area
+2. **No Emoji in Matplotlib** - Causes export stalling
+3. **Check Memory First** - Contains solutions to common problems
+4. **Follow Established Patterns** - Use proven implementations from docs
 
----
+## 💡 Remember
 
-**Remember**: This user has invested significant effort in creating a comprehensive memory system. Honor that investment by using it effectively and maintaining the high standards established. 
+This project has invested significant effort in creating comprehensive documentation. Honor that investment by:
+- Using the memory system effectively
+- Maintaining high quality standards
+- Updating documentation when making changes
+- Following established patterns and preferences
+
+**The memory system at `memory/` is your primary resource. Use it!** 

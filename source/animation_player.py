@@ -140,6 +140,10 @@ class InteractiveAnimationPlayer:
                 # Update to next frame
                 self.update_to_frame(next_frame)
                 self.last_frame_time = current_time
+                
+                # Debug output every 10 frames
+                if self.current_frame % 10 == 0:
+                    print(f"🎬 Frame {self.current_frame + 1}/{len(self.frames_data)} ({self.fps * self.speed_multiplier:.1f} FPS)")
         
         return False  # Continue animation loop
     
@@ -154,8 +158,19 @@ class InteractiveAnimationPlayer:
             if frame_data['colors'] is not None:
                 self.point_cloud.colors = o3d.utility.Vector3dVector(frame_data['colors'])
             
-            # Update visualization
-            self.vis.update_geometry(self.point_cloud)
+            # Re-estimate normals for updated geometry
+            self.point_cloud.estimate_normals()
+            
+            # Update visualization - try multiple approaches for compatibility
+            try:
+                # Method 1: Update existing geometry (preferred)
+                self.vis.update_geometry(self.point_cloud)
+                self.vis.update_renderer()
+            except:
+                # Method 2: Clear and re-add geometry (fallback)
+                self.vis.clear_geometries()
+                self.vis.add_geometry(self.point_cloud)
+                self.vis.update_renderer()
     
     # Key callback functions - these run in the 3D window
     def on_key_space(self, vis):

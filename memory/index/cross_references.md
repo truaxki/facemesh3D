@@ -1,187 +1,197 @@
-# Cross-Reference Index
+# Cross References Guide
 
 **Type**: Index/Navigation
-**Context**: Memory system navigation and relationship mapping
-**Tags**: index, navigation, cross-references, search
-**Related**: All memory system components
+**Context**: Document relationships and navigation within the memory system
+**Tags**: navigation, relationships, cross-reference
+**Related**: All memory documents
 
-## Memory Graph Overview
+## Document Relationship Map
 
-### Core Components
+### Core System Understanding
 ```
-ARCHITECTURE
-    └── system_overview.md ──────────┐
-                                     │
-COMPONENTS                          │
-    └── streamlit_interface.md ──────┼─── WORKFLOWS
-                                     │       └── export_pipeline.md
-ISSUES                              │
-    └── ui_redesign_history.md ──────┘
-                                     
-USER_INTERACTIONS
-    └── current_session.md
+architecture/system_overview.md
+    ├── components/streamlit_interface.md
+    ├── components/animation_player.md
+    ├── workflows/export_pipeline.md
+    └── features/* (all feature implementations)
 ```
 
-## Hierarchical Relationships
+### Feature Implementation Chain
+```
+features/facial_landmark_import.md
+    ├── features/z_scaling_enhancement.md
+    ├── features/data_filtering.md
+    ├── features/post_filter_movement.md
+    └── features/interactive_animation.md
+```
 
-### 1. **Architecture Level** (Highest Abstraction)
-- **Primary**: `memory/architecture/system_overview.md`
-- **Scope**: Entire system understanding
-- **References**: All other components as implementation details
+### Problem-Solution History
+```
+issues/ui_redesign_history.md
+    ├── features/interface_cleanup.md
+    ├── user_interactions/current_session.md
+    └── workflows/export_pipeline.md (stalling fix)
+```
 
-### 2. **Component Level** (Implementation Details)
-- **Primary**: `memory/components/streamlit_interface.md`
-- **Scope**: Specific technical components
-- **References**: Architecture (context), Workflows (processes), Issues (problems)
+## Navigation by Task
 
-### 3. **Process Level** (Operational Knowledge)
-- **Primary**: `memory/workflows/export_pipeline.md`
-- **Scope**: Step-by-step procedures
-- **References**: Components (implementation), Issues (troubleshooting)
+### 🎯 Getting Started
+1. `memory/README.md` - Memory system overview
+2. `index/quick_reference.md` - Essential information
+3. `architecture/system_overview.md` - System understanding
+4. `index/glossary.md` - Technical terms
 
-### 4. **Historical Level** (Experience Memory)
-- **Primary**: `memory/issues/ui_redesign_history.md`
-- **Scope**: Problem-solution evolution
-- **References**: Components (affected), Workflows (improved)
+### 🔧 Understanding Components
+- **Web Interface**: `components/streamlit_interface.md`
+- **Animation Player**: `components/animation_player.md`
+- **Export System**: `workflows/export_pipeline.md`
 
-### 5. **Context Level** (Session Memory)
-- **Primary**: `memory/user_interactions/current_session.md`
-- **Scope**: Current state and user preferences
-- **References**: All others (as context)
+### 📊 Working with Features
+- **CSV Import**: `features/facial_landmark_import.md`
+- **Z-Scaling**: `features/z_scaling_enhancement.md` + `features/optimal_z_scaling_discovery.md`
+- **Filtering**: `features/data_filtering.md`
+- **Movement Analysis**: `features/post_filter_movement.md`
+- **Animation**: `features/interactive_animation.md`
 
-## Topic-Based Cross-References
+### 🐛 Solving Problems
+- **UI Issues**: `issues/ui_redesign_history.md`
+- **Export Problems**: `workflows/export_pipeline.md`
+- **General Issues**: `issues/resolved_issues.md` (if exists)
 
-### UI/Interface Design
-**Primary Documents**:
-- `issues/ui_redesign_history.md` (evolution)
-- `components/streamlit_interface.md` (current state)
-- `user_interactions/current_session.md` (preferences)
+### 👤 User Context
+- **Preferences**: `user_interactions/current_session.md`
+- **Patterns**: `user_interactions/interaction_patterns.md` (if exists)
 
-**Key Relationships**:
-- User feedback → Design changes → Implementation → User satisfaction
+### 🚀 Development
+- **Refactoring**: `development/refactor_summary.md`
+- **Architecture**: `architecture/new_architecture_readme.md`
+- **Standards**: `development/coding_standards.md` (if exists)
 
-### Export Pipeline
-**Primary Documents**:
-- `workflows/export_pipeline.md` (process)
-- `components/streamlit_interface.md` (UI integration)
-- `issues/ui_redesign_history.md` (progress bar improvements)
+## Document Dependencies
 
-**Key Relationships**:
-- Technical process → User interface → Progress feedback → User experience
+### Critical Dependencies
+These documents are referenced by many others:
+- `index/quick_reference.md` - Referenced by all
+- `user_interactions/current_session.md` - User context
+- `architecture/system_overview.md` - System foundation
 
-### Session State Management
-**Primary Documents**:
-- `components/streamlit_interface.md` (implementation)
-- `workflows/export_pipeline.md` (usage)
-- `user_interactions/current_session.md` (current state)
+### Feature Dependencies
+```
+facial_landmark_import.md
+    └─> z_scaling_enhancement.md
+        └─> data_filtering.md
+            └─> post_filter_movement.md
+                └─> interactive_animation.md
+```
 
-**Key Relationships**:
-- Technical implementation → Process usage → User context
+### Workflow Dependencies
+```
+export_pipeline.md
+    ├── components/streamlit_interface.md
+    ├── issues/ui_redesign_history.md (emoji stalling)
+    └── features/interface_cleanup.md
+```
 
-## Search Tags Index
+## Tag-Based Navigation
 
-### Architecture Tags
-- `architecture`: system_overview.md
-- `streamlit`: system_overview.md, streamlit_interface.md
-- `open3d`: system_overview.md
-- `visualization`: system_overview.md, streamlit_interface.md
+### #user-preferences
+- `user_interactions/current_session.md`
+- `issues/ui_redesign_history.md`
+- `index/quick_reference.md`
 
-### Technical Tags
-- `export`: export_pipeline.md, streamlit_interface.md
-- `mp4`: export_pipeline.md
-- `video`: export_pipeline.md
-- `animation`: export_pipeline.md, streamlit_interface.md
-- `session-state`: streamlit_interface.md, current_session.md
+### #technical-implementation
+- `components/animation_player.md`
+- `features/data_filtering.md`
+- `features/post_filter_movement.md`
 
-### UI/UX Tags
-- `ui-design`: ui_redesign_history.md, streamlit_interface.md
-- `layout`: ui_redesign_history.md, streamlit_interface.md
-- `user-experience`: ui_redesign_history.md, current_session.md
-- `progress`: export_pipeline.md, streamlit_interface.md
+### #problem-solution
+- `issues/ui_redesign_history.md`
+- `workflows/export_pipeline.md`
+- `features/interface_cleanup.md`
 
-### Problem/Solution Tags
-- `troubleshooting`: export_pipeline.md, ui_redesign_history.md
-- `workflow`: export_pipeline.md
-- `evolution`: ui_redesign_history.md
-- `user-preferences`: current_session.md
+### #architecture
+- `architecture/system_overview.md`
+- `architecture/new_architecture_readme.md`
+- `development/refactor_summary.md`
 
-## Bidirectional References
+### #visualization
+- `features/interactive_animation.md`
+- `components/animation_player.md`
+- `features/animation_views_update.md`
 
-### `system_overview.md` References
-**Points To**:
-- `[[components-streamlit-interface]]` (primary UI component)
-- `[[workflows-export-pipeline]]` (key process)
+### #data-processing
+- `features/facial_landmark_import.md`
+- `features/data_filtering.md`
+- `features/post_filter_movement.md`
 
-**Referenced By**:
-- All component and workflow documents for context
+## Quick Links by Component
 
-### `streamlit_interface.md` References
-**Points To**:
-- `[[architecture-system-overview]]` (system context)
-- `[[workflows-export-pipeline]]` (export integration)
-- `[[issues-ui-redesign-history]]` (evolution context)
+### Streamlit Interface
+- Main Doc: `components/streamlit_interface.md`
+- Related:
+  - `issues/ui_redesign_history.md`
+  - `features/interface_cleanup.md`
+  - `workflows/export_pipeline.md`
 
-**Referenced By**:
-- `export_pipeline.md` (UI integration points)
-- `ui_redesign_history.md` (component being redesigned)
-- `current_session.md` (current component state)
+### Animation System
+- Main Doc: `components/animation_player.md`
+- Related:
+  - `features/interactive_animation.md`
+  - `workflows/frame_by_frame_guide.md`
+  - `features/animation_views_update.md`
 
-### `export_pipeline.md` References
-**Points To**:
-- `[[components-streamlit-interface]]` (UI integration)
-- `[[issues-export-stalling]]` (historical problems)
+### Data Import/Processing
+- Main Docs:
+  - `features/facial_landmark_import.md`
+  - `features/data_filtering.md`
+- Related:
+  - `features/z_scaling_enhancement.md`
+  - `features/post_filter_movement.md`
 
-**Referenced By**:
-- `streamlit_interface.md` (export functionality)
-- `ui_redesign_history.md` (progress improvements)
+### Export System
+- Main Doc: `workflows/export_pipeline.md`
+- Related:
+  - `issues/ui_redesign_history.md` (emoji fix)
+  - `components/streamlit_interface.md`
 
-### `ui_redesign_history.md` References
-**Points To**:
-- `[[components-streamlit-interface]]` (component being redesigned)
-- `[[workflows-export-pipeline]]` (affected workflows)
+## Historical Evolution
 
-**Referenced By**:
-- `streamlit_interface.md` (design evolution)
-- `current_session.md` (recent accomplishments)
+### Feature Development Timeline
+1. Basic point cloud visualization
+2. `facial_landmark_import.md` - CSV support added
+3. `z_scaling_enhancement.md` - Depth enhancement
+4. `data_filtering.md` - Kabsch alignment
+5. `post_filter_movement.md` - Movement analysis
+6. `interactive_animation.md` - Enhanced player
+7. `interface_cleanup.md` - UI optimization
 
-### `current_session.md` References
-**Points To**:
-- All other documents for context and accomplishments
+### Major Refactors
+1. `development/refactor_summary.md` - System consolidation
+2. `architecture/new_architecture_readme.md` - Architecture update
+3. `issues/ui_redesign_history.md` - UI evolution
 
-**Referenced By**:
-- None (current session endpoint)
+## Usage Patterns
 
-## Quick Navigation Guide
+### For New Features
+1. Check `user_interactions/current_session.md`
+2. Review similar features in `features/`
+3. Follow patterns from `components/`
+4. Update relevant cross-references
 
-### For New Issues
-1. Check `issues/ui_redesign_history.md` for similar problems
-2. Review `components/streamlit_interface.md` for current state
-3. Consult `workflows/export_pipeline.md` for process context
+### For Bug Fixes
+1. Check `issues/` for similar problems
+2. Review related `workflows/`
+3. Test with patterns from feature docs
+4. Document solution if significant
 
-### For Feature Implementation
-1. Start with `architecture/system_overview.md` for context
-2. Identify affected components in `components/`
-3. Check `workflows/` for process impacts
-4. Review `user_interactions/current_session.md` for preferences
-
-### For Troubleshooting
-1. Check `workflows/export_pipeline.md` for known issues
-2. Review `issues/ui_redesign_history.md` for similar problems
-3. Consult `components/streamlit_interface.md` for current implementation
-
-### For Context Understanding
-1. Start with `user_interactions/current_session.md` for immediate context
-2. Review `architecture/system_overview.md` for system understanding
-3. Check relevant component and workflow documents
+### For Understanding
+1. Start with `architecture/system_overview.md`
+2. Deep dive into specific `components/`
+3. Review `features/` for implementations
+4. Check `index/glossary.md` for terms
 
 ## Metadata
-- Created: 2025-01-24T18:00:00Z
-- Updated: 2025-01-24T18:00:00Z
+- Created: 2025-01-24T18:15:00Z
+- Updated: 2025-01-28T11:55:00Z
 - Confidence: High
-- Source: Memory system analysis and relationship mapping
-
-## Maintenance Notes
-- Update this index when new memory documents are added
-- Verify cross-references remain valid when documents are modified
-- Add new tag categories as the system evolves
-- Review relationship accuracy periodically 
+- Source: Complete memory system analysis 
