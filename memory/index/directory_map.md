@@ -10,6 +10,7 @@ memory/
 ├── development/       # Development notes and plans
 ├── features/          # Feature documentation
 ├── index/            # Quick references and indices
+├── notes/            # Technical reports and focused documentation
 └── workflows/        # Process and workflow guides
 ```
 
@@ -44,6 +45,12 @@ memory/
 - Quick reference guides
 - Glossaries
 - Cross-references
+
+### /notes/
+- Technical reports on specific methodologies
+- Implementation analysis and documentation
+- Research summaries and findings
+- Focused deep-dive documentation
 
 ### /workflows/
 - Step-by-step guides

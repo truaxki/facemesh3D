@@ -22,7 +22,16 @@ features/facial_landmark_import.md
     ├── features/z_scaling_enhancement.md
     ├── features/data_filtering.md
     ├── features/post_filter_movement.md
+    ├── features/custom_baseline_functionality.md
     └── features/interactive_animation.md
+```
+
+### Technical Reports and Analysis
+```
+notes/baseline_definition_report.md
+    ├── features/custom_baseline_functionality.md
+    ├── features/data_filtering.md
+    └── components/data_filters.py (implementation)
 ```
 
 ### Problem-Solution History
@@ -50,8 +59,13 @@ issues/ui_redesign_history.md
 - **CSV Import**: `features/facial_landmark_import.md`
 - **Z-Scaling**: `features/z_scaling_enhancement.md` + `features/optimal_z_scaling_discovery.md`
 - **Filtering**: `features/data_filtering.md`
+- **Baseline Selection**: `features/custom_baseline_functionality.md`
 - **Movement Analysis**: `features/post_filter_movement.md`
 - **Animation**: `features/interactive_animation.md`
+
+### 📋 Technical Reports
+- **Baseline Methodology**: `notes/baseline_definition_report.md`
+- **Implementation Details**: Related feature documentation
 
 ### 🐛 Solving Problems
 - **UI Issues**: `issues/ui_redesign_history.md`
@@ -80,8 +94,17 @@ These documents are referenced by many others:
 facial_landmark_import.md
     └─> z_scaling_enhancement.md
         └─> data_filtering.md
+            ├─> custom_baseline_functionality.md
             └─> post_filter_movement.md
                 └─> interactive_animation.md
+```
+
+### Technical Report Dependencies
+```
+notes/baseline_definition_report.md
+    ├─> features/custom_baseline_functionality.md
+    ├─> features/data_filtering.md
+    └─> components/data_filters.py (source code)
 ```
 
 ### Workflow Dependencies
@@ -102,7 +125,16 @@ export_pipeline.md
 ### #technical-implementation
 - `components/animation_player.md`
 - `features/data_filtering.md`
+- `features/custom_baseline_functionality.md`
 - `features/post_filter_movement.md`
+
+### #technical-reports
+- `notes/baseline_definition_report.md`
+
+### #baseline-analysis
+- `notes/baseline_definition_report.md`
+- `features/custom_baseline_functionality.md`
+- `features/data_filtering.md`
 
 ### #problem-solution
 - `issues/ui_redesign_history.md`
@@ -122,7 +154,9 @@ export_pipeline.md
 ### #data-processing
 - `features/facial_landmark_import.md`
 - `features/data_filtering.md`
+- `features/custom_baseline_functionality.md`
 - `features/post_filter_movement.md`
+- `notes/baseline_definition_report.md`
 
 ## Quick Links by Component
 
@@ -144,6 +178,9 @@ export_pipeline.md
 - Main Docs:
   - `features/facial_landmark_import.md`
   - `features/data_filtering.md`
+  - `features/custom_baseline_functionality.md`
+- Technical Reports:
+  - `notes/baseline_definition_report.md`
 - Related:
   - `features/z_scaling_enhancement.md`
   - `features/post_filter_movement.md`
@@ -161,9 +198,13 @@ export_pipeline.md
 2. `facial_landmark_import.md` - CSV support added
 3. `z_scaling_enhancement.md` - Depth enhancement
 4. `data_filtering.md` - Kabsch alignment
-5. `post_filter_movement.md` - Movement analysis
-6. `interactive_animation.md` - Enhanced player
-7. `interface_cleanup.md` - UI optimization
+5. `custom_baseline_functionality.md` - Flexible baseline selection
+6. `post_filter_movement.md` - Movement analysis
+7. `interactive_animation.md` - Enhanced player
+8. `interface_cleanup.md` - UI optimization
+
+### Technical Documentation Evolution
+1. `notes/baseline_definition_report.md` - Baseline methodology documentation
 
 ### Major Refactors
 1. `development/refactor_summary.md` - System consolidation
@@ -178,6 +219,12 @@ export_pipeline.md
 3. Follow patterns from `components/`
 4. Update relevant cross-references
 
+### For Technical Understanding
+1. Start with relevant `notes/` reports
+2. Review `features/` for implementation details
+3. Check `components/` for code structure
+4. Reference `index/glossary.md` for terms
+
 ### For Bug Fixes
 1. Check `issues/` for similar problems
 2. Review related `workflows/`
@@ -188,10 +235,11 @@ export_pipeline.md
 1. Start with `architecture/system_overview.md`
 2. Deep dive into specific `components/`
 3. Review `features/` for implementations
-4. Check `index/glossary.md` for terms
+4. Check technical reports in `notes/`
+5. Reference `index/glossary.md` for terms
 
 ## Metadata
 - Created: 2025-01-24T18:15:00Z
-- Updated: 2025-01-28T11:55:00Z
+- Updated: 2025-01-28T15:35:00Z
 - Confidence: High
-- Source: Complete memory system analysis 
+- Source: Complete memory system analysis with notes section 
