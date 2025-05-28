@@ -49,6 +49,7 @@ class StreamlitInterface:
             'animation_created': False,
             'z_scale': 25.0,
             'color_mode': 'local_movement',  # renamed from post_filter_movement
+            'baseline_frames': 30,
             'animation_fps': 15,
             'export_requested': False,
             'current_frame_idx': 0
@@ -199,6 +200,15 @@ class StreamlitInterface:
         with st.sidebar:
             st.subheader("Animation Settings")
             
+            # Baseline frames configuration
+            baseline_frames = st.number_input(
+                "Baseline Frames for Alignment",
+                min_value=1,
+                max_value=100,
+                value=30,
+                help="Number of initial frames to average for stable baseline (more frames = more stable, but slower processing)"
+            )
+            
             # Color mode selection with better name
             color_mode = st.selectbox(
                 "Color Mode",
@@ -210,6 +220,7 @@ class StreamlitInterface:
                 help="Local Movement highlights facial movements after head motion removal"
             )
             st.session_state.color_mode = color_mode
+            st.session_state.baseline_frames = baseline_frames
             
             # Hidden but set defaults
             st.session_state.z_scale = 25.0  # Always use 25x
@@ -268,7 +279,7 @@ class StreamlitInterface:
                 status_text.text("Applying Kabsch alignment to remove head motion...")
                 frames_data = DataFilters.align_frames_to_baseline(
                     frames_data, 
-                    baseline_frame_idx=0
+                    baseline_frame_count=st.session_state.baseline_frames
                 )
                 
                 # Apply coloring based on mode
@@ -301,6 +312,7 @@ class StreamlitInterface:
                     'num_landmarks': len(frames_data[0]['points']),
                     'color_mode': st.session_state.color_mode,
                     'z_scale': st.session_state.z_scale,
+                    'baseline_frames': st.session_state.baseline_frames,
                     'fps': st.session_state.animation_fps,
                     'created_at': datetime.now().isoformat(),
                     'kabsch_aligned': True,  # Always true in refactored version

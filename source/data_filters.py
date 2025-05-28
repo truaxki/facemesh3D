@@ -82,26 +82,46 @@ class DataFilters:
         return (R @ points.T).T + t
     
     @staticmethod
-    def align_frames_to_baseline(frames_data: List[Dict], baseline_frame_idx: int = 0) -> List[Dict]:
+    def align_frames_to_baseline(frames_data: List[Dict], baseline_frame_count: int = 30) -> List[Dict]:
         """
-        Align all frames to a baseline frame using Kabsch algorithm.
+        Align all frames to a baseline computed from the average of the first N frames using Kabsch algorithm.
         
         Args:
             frames_data: List of frame dictionaries with 'points' and 'colors'
-            baseline_frame_idx: Index of frame to use as reference (default: 0)
+            baseline_frame_count: Number of initial frames to average for baseline (default: 30)
             
         Returns:
             List of aligned frame dictionaries
         """
-        if not frames_data or len(frames_data) <= baseline_frame_idx:
-            raise ValueError("Invalid baseline frame index or empty frames data")
+        if not frames_data:
+            raise ValueError("Empty frames data")
         
-        baseline_points = frames_data[baseline_frame_idx]['points'].copy()
+        # Determine actual number of frames to use for baseline
+        actual_baseline_count = min(baseline_frame_count, len(frames_data))
+        
+        print(f"🎯 Computing baseline from average of first {actual_baseline_count} frames")
+        print(f"📊 Total frames to align: {len(frames_data)}")
+        
+        # Compute average baseline points
+        baseline_frames = frames_data[:actual_baseline_count]
+        first_frame_point_count = len(baseline_frames[0]['points'])
+        
+        # Check that all baseline frames have the same number of points
+        for i, frame in enumerate(baseline_frames):
+            if len(frame['points']) != first_frame_point_count:
+                print(f"⚠️ Baseline frame {i}: Point count mismatch ({len(frame['points'])} vs {first_frame_point_count})")
+                raise ValueError(f"Inconsistent point counts in baseline frames")
+        
+        # Calculate average points across baseline frames
+        baseline_points = np.zeros((first_frame_point_count, 3))
+        for frame in baseline_frames:
+            baseline_points += frame['points']
+        baseline_points /= actual_baseline_count
+        
+        print(f"📍 Baseline computed from {actual_baseline_count} frames with {len(baseline_points)} points each")
+        
         aligned_frames = []
         alignment_stats = []
-        
-        print(f"🎯 Aligning {len(frames_data)} frames to baseline frame {baseline_frame_idx}")
-        print(f"📊 Baseline frame has {len(baseline_points)} points")
         
         for i, frame_data in enumerate(frames_data):
             current_points = frame_data['points'].copy()
@@ -113,12 +133,8 @@ class DataFilters:
                 aligned_frames.append(frame_data.copy())
                 continue
             
-            if i == baseline_frame_idx:
-                # Baseline frame - no transformation needed
-                aligned_frame = frame_data.copy()
-                rmsd = 0.0
-            else:
-                # Apply Kabsch alignment
+            if i < actual_baseline_count:
+                # For frames used in baseline computation, align to the computed average baseline
                 R, t, rmsd = DataFilters.kabsch_algorithm(baseline_points, current_points)
                 
                 # Transform points
@@ -133,27 +149,56 @@ class DataFilters:
                     'rotation_matrix': R,
                     'translation_vector': t,
                     'rmsd': rmsd,
-                    'baseline_frame': baseline_frame_idx
+                    'baseline_type': f'average_of_{actual_baseline_count}_frames',
+                    'is_baseline_frame': True
+                }
+            else:
+                # Apply Kabsch alignment to computed baseline
+                R, t, rmsd = DataFilters.kabsch_algorithm(baseline_points, current_points)
+                
+                # Transform points
+                aligned_points = DataFilters.apply_transformation(current_points, R, t)
+                
+                # Create aligned frame
+                aligned_frame = frame_data.copy()
+                aligned_frame['points'] = aligned_points
+                
+                # Store transformation info
+                aligned_frame['kabsch_transform'] = {
+                    'rotation_matrix': R,
+                    'translation_vector': t,
+                    'rmsd': rmsd,
+                    'baseline_type': f'average_of_{actual_baseline_count}_frames',
+                    'is_baseline_frame': False
                 }
             
             alignment_stats.append({
                 'frame_idx': i,
                 'rmsd': rmsd,
-                'is_baseline': i == baseline_frame_idx
+                'is_baseline_contributor': i < actual_baseline_count
             })
             
             aligned_frames.append(aligned_frame)
         
         # Print alignment statistics
-        rmsds = [stat['rmsd'] for stat in alignment_stats if not stat['is_baseline']]
-        if rmsds:
-            print(f"📈 Alignment RMSD statistics:")
-            print(f"   Mean: {np.mean(rmsds):.4f}")
-            print(f"   Std:  {np.std(rmsds):.4f}")
-            print(f"   Min:  {np.min(rmsds):.4f}")
-            print(f"   Max:  {np.max(rmsds):.4f}")
+        baseline_rmsds = [stat['rmsd'] for stat in alignment_stats if stat['is_baseline_contributor']]
+        other_rmsds = [stat['rmsd'] for stat in alignment_stats if not stat['is_baseline_contributor']]
         
-        print(f"✅ Kabsch alignment complete!")
+        if baseline_rmsds:
+            print(f"📈 Baseline frames alignment RMSD statistics:")
+            print(f"   Mean: {np.mean(baseline_rmsds):.4f}")
+            print(f"   Std:  {np.std(baseline_rmsds):.4f}")
+            print(f"   Min:  {np.min(baseline_rmsds):.4f}")
+            print(f"   Max:  {np.max(baseline_rmsds):.4f}")
+        
+        if other_rmsds:
+            print(f"📈 Non-baseline frames alignment RMSD statistics:")
+            print(f"   Mean: {np.mean(other_rmsds):.4f}")
+            print(f"   Std:  {np.std(other_rmsds):.4f}")
+            print(f"   Min:  {np.min(other_rmsds):.4f}")
+            print(f"   Max:  {np.max(other_rmsds):.4f}")
+        
+        print(f"✅ Kabsch alignment complete using average baseline!")
         return aligned_frames
     
     @staticmethod
@@ -314,8 +359,8 @@ class DataFilters:
         return {
             'kabsch_alignment': {
                 'name': 'Kabsch Alignment',
-                'description': 'Align all frames to a baseline frame using optimal rotation',
-                'parameters': ['baseline_frame_idx'],
+                'description': 'Align all frames to a baseline computed from average of first N frames',
+                'parameters': ['baseline_frame_count'],
                 'use_case': 'Remove rigid body motion, focus on shape changes'
             },
             'center_frames': {
@@ -529,8 +574,8 @@ class DataFilters:
             print(f"🔧 Applying filter: {filter_name}")
             
             if filter_name == 'kabsch_alignment':
-                baseline_idx = params.get('baseline_frame_idx', 0)
-                result_frames = DataFilters.align_frames_to_baseline(result_frames, baseline_idx)
+                baseline_count = params.get('baseline_frame_count', 30)
+                result_frames = DataFilters.align_frames_to_baseline(result_frames, baseline_count)
             
             elif filter_name == 'center_frames':
                 result_frames = DataFilters.center_frames(result_frames)
