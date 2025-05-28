@@ -359,8 +359,8 @@ class FileManager:
                 folder_name = f"facemesh_{subject}_{test}_{len(frames_data)}frames{filter_suffix}"
             
             # Create animation folder
-            animations_dir = Path("animations")
-            animations_dir.mkdir(exist_ok=True)
+            animations_dir = Path("data/animations")
+            animations_dir.mkdir(parents=True, exist_ok=True)
             
             folder_path = animations_dir / folder_name
             folder_path.mkdir(exist_ok=True)
@@ -530,7 +530,7 @@ class FileManager:
     @staticmethod
     def get_animation_folders():
         """Get available animation folders."""
-        animations_dir = os.path.join(os.getcwd(), "animations")
+        animations_dir = os.path.join(os.getcwd(), "data", "animations")
         
         if not os.path.exists(animations_dir):
             return []

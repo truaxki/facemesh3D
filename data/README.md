@@ -1,14 +1,31 @@
-# Data Directory Structure
+# Data Directory
 
-This directory contains the input and output data for the Facial Microexpression Analysis system.
+This directory contains all user data for the facial microexpression analysis tool.
 
-## Directory Structure
+## Structure
 
-```
-data/
-├── read/     # Input CSV files (place your facial landmark data here)
-└── write/    # System outputs (animations, videos, exports)
-```
+### `/read/`
+Input directory for CSV files containing facial landmark data.
+- Place your CSV files here for processing
+- Expected format: `feat_0_x, feat_0_y, feat_0_z, ...` for facial landmarks
+- Must include `Time (s)` column
+
+### `/write/`
+Output directory for generated animations and exports.
+- All new animations are saved here with timestamps
+- Each animation includes metadata.json
+- MP4 exports also saved here
+
+### `/animations/` (Legacy)
+Contains animations created with pre-refactor version.
+- These are from the old workflow
+- New animations should NOT be saved here
+- Use `/write/` for all new outputs
+
+## Important Notes
+- Keep input files in `/read/`
+- All outputs go to `/write/`
+- The `/animations/` folder is legacy - for reference only
 
 ## Input Format (data/read/)
 
