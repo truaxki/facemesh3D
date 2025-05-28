@@ -107,6 +107,16 @@ class StreamlitInterface:
         try:
             with st.spinner("Loading CSV file..."):
                 df = pd.read_csv(file_path)
+                
+                # Check if Time (s) column exists and sort by it
+                if 'Time (s)' in df.columns:
+                    original_order = df.index.tolist()
+                    df = df.sort_values('Time (s)').reset_index(drop=True)
+                    
+                    # Check if sorting changed the order
+                    if df.index.tolist() != original_order:
+                        st.info("📊 Data has been automatically sorted by Time (s) column")
+                
                 st.session_state.csv_data = df
             
             # File info
@@ -126,8 +136,19 @@ class StreamlitInterface:
             # Preview data
             with st.expander("Preview Data", expanded=True):
                 # Show first few rows
-                st.subheader("First 5 frames")
-                st.dataframe(df.head(), use_container_width=True)
+                st.subheader("First 5 frames (sorted by time)")
+                preview_df = df.head()
+                
+                # If Time (s) column exists, highlight it in preview
+                if 'Time (s)' in df.columns:
+                    # Create a styled dataframe that highlights the Time column
+                    st.dataframe(preview_df, use_container_width=True)
+                    
+                    # Show time range info
+                    time_col = df['Time (s)']
+                    st.info(f"⏱️ Time range: {time_col.min():.3f}s to {time_col.max():.3f}s (Duration: {time_col.max() - time_col.min():.3f}s)")
+                else:
+                    st.dataframe(preview_df, use_container_width=True)
                 
                 # Show landmark statistics
                 if num_landmarks > 0:
