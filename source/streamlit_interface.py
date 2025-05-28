@@ -16,7 +16,7 @@ from file_manager import FileManager
 from video_exporter import VideoExporter
 from desktop_launcher import DesktopLauncher
 from visualization import PointCloudVisualizer
-from data_filters import DataFilterManager
+from data_filters import DataFilters
 import matplotlib.pyplot as plt
 
 
@@ -224,9 +224,6 @@ class StreamlitInterface:
                 
                 frames_data = []
                 
-                # Apply Kabsch alignment filter
-                filter_manager = DataFilterManager()
-                
                 # First pass: collect all frames
                 status_text.text("Loading frames...")
                 for i in range(num_frames):
@@ -248,10 +245,9 @@ class StreamlitInterface:
                 
                 # Apply Kabsch alignment
                 status_text.text("Applying Kabsch alignment to remove head motion...")
-                frames_data = filter_manager.apply_filter(
+                frames_data = DataFilters.align_frames_to_baseline(
                     frames_data, 
-                    'kabsch_alignment',
-                    {'baseline_frame_idx': 0}
+                    baseline_frame_idx=0
                 )
                 
                 # Apply coloring based on mode
