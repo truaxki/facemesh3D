@@ -384,10 +384,9 @@ class StreamlitInterface:
             
             # Frame slider
             frame_idx = st.slider(
-                "Frame", 
+                f"Frame (1-{len(frames_data)})", 
                 0, len(frames_data)-1, 
-                st.session_state.current_frame_idx,
-                format_func=lambda x: f"Frame {x+1}/{len(frames_data)}"
+                st.session_state.current_frame_idx
             )
             st.session_state.current_frame_idx = frame_idx
             
