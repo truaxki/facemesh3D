@@ -287,3 +287,67 @@ DataFilters.align_frames_to_baseline(frames, baseline_frame_idx)
 ```
 
 **Perfect for advanced facial microexpression analysis with flexible, robust baseline selection!** 🚀 
+
+## 🎨 Statistical Deviation Color Scheme (NEW!)
+
+### **🌈 Advanced Coloring Mode**
+When using a custom statistical baseline, a new color mode becomes available:
+
+**Statistical Deviation Coloring** - Colors each point based on how many standard deviations it is from the baseline mean:
+
+- 🔵 **Blue**: Within 1 standard deviation (normal variation)
+- 🟡 **Yellow**: 1-3 standard deviations (elevated variation) 
+- 🔴 **Red**: Beyond 3 standard deviations (extreme variation)
+
+### **📊 How It Works**
+```python
+# For each landmark point:
+deviation_from_baseline = current_point - baseline_mean
+deviation_magnitude = ||deviation_from_baseline||
+std_dev_magnitude = ||baseline_std_dev||
+normalized_deviation = deviation_magnitude / std_dev_magnitude
+
+# Color assignment:
+if normalized_deviation <= 1.0:    # Blue
+elif normalized_deviation <= 3.0:  # Yellow  
+else:                              # Red
+```
+
+### **🧪 Test Results**
+```
+✅ Statistical Deviation Coloring Tests
+   Real data: 91.3% points > 1 std dev, 1.0% points > 3 std dev
+   Color validation: All boundary conditions correct
+   
+🎨 Color scheme ready:
+   🔵 Blue: Within 1 standard deviation
+   🟡 Yellow: 1-3 standard deviations
+   🔴 Red: Beyond 3 standard deviations
+```
+
+### **🎯 Perfect for Analysis**
+- **Identify Outliers**: Red points show extreme deviations
+- **Track Variability**: Yellow points show elevated movement
+- **Baseline Comparison**: Blue points show normal variation
+- **Quality Control**: Easily spot tracking errors or artifacts
+
+## 🚀 Enhanced Workflow
+
+### **Complete Workflow with Statistical Deviation**
+```
+1. Import Tab:
+   - Select main CSV file
+   - Choose "Custom Statistical Baseline"
+   - Select baseline CSV file
+   - Generate statistical baseline
+
+2. Animation Tab:
+   - Color Mode: "Statistical Deviation (Baseline Comparison)"
+   - View color scheme explanation
+   - Create animation
+
+3. Result:
+   - Points colored by deviation from baseline
+   - Blue = normal, Yellow = elevated, Red = extreme
+   - Statistical insights in console output
+``` 

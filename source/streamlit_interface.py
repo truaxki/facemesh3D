@@ -300,16 +300,38 @@ class StreamlitInterface:
             st.subheader("Animation Settings")
             
             # Color mode selection with better name
+            color_mode_options = ["local_movement", "single"]
+            color_mode_labels = {
+                "local_movement": "Local Movement (Microexpressions)",
+                "single": "Single Color"
+            }
+            
+            # Add statistical deviation option if custom baseline is available
+            if (st.session_state.baseline_mode == 'custom_csv' and 
+                st.session_state.statistical_baseline is not None):
+                color_mode_options.insert(1, "statistical_deviation")
+                color_mode_labels["statistical_deviation"] = "Statistical Deviation (Baseline Comparison)"
+            
             color_mode = st.selectbox(
                 "Color Mode",
-                ["local_movement", "single"],
-                format_func=lambda x: {
-                    "local_movement": "Local Movement (Microexpressions)",
-                    "single": "Single Color"
-                }[x],
-                help="Local Movement highlights facial movements after head motion removal"
+                color_mode_options,
+                format_func=lambda x: color_mode_labels[x],
+                help="Choose how to color the facial landmarks"
             )
             st.session_state.color_mode = color_mode
+            
+            # Show color scheme explanation for statistical deviation mode
+            if color_mode == "statistical_deviation":
+                st.markdown("---")
+                st.subheader("🎨 Color Scheme")
+                st.markdown("""
+                **Statistical Deviation Colors:**
+                - 🔵 **Blue**: Within 1 standard deviation (normal)
+                - 🟡 **Yellow**: 1-3 standard deviations (elevated)
+                - 🔴 **Red**: Beyond 3 standard deviations (extreme)
+                
+                Each point is colored based on how far it deviates from its expected position in the baseline.
+                """)
             
             # Hidden but set defaults
             st.session_state.z_scale = 25.0  # Always use 25x
@@ -409,6 +431,14 @@ class StreamlitInterface:
                 if st.session_state.color_mode == 'local_movement':
                     status_text.text("Calculating local movement colors...")
                     frames_data = self.apply_local_movement_coloring(frames_data)
+                elif (st.session_state.color_mode == 'statistical_deviation' and 
+                      st.session_state.baseline_mode == 'custom_csv' and 
+                      st.session_state.statistical_baseline is not None):
+                    status_text.text("Calculating statistical deviation colors...")
+                    frames_data = DataFilters.generate_statistical_deviation_colors(
+                        frames_data, 
+                        st.session_state.statistical_baseline
+                    )
                 else:
                     # Single color mode
                     for frame in frames_data:

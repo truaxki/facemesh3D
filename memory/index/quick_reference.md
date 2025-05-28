@@ -92,6 +92,21 @@ baseline_mode = 'custom_csv'        # Use statistical baseline from CSV
 statistical_baseline = {...}        # Generated from baseline CSV file
 ```
 
+### Color Modes Available
+```python
+color_mode = 'local_movement'       # Frame-to-frame movement (default)
+color_mode = 'single'              # Single color for all points
+color_mode = 'statistical_deviation'  # Deviation from baseline (NEW!)
+```
+
+### Statistical Deviation Colors (NEW!)
+```python
+# Only available with custom statistical baseline
+# 🔵 Blue: Within 1 standard deviation (normal)
+# 🟡 Yellow: 1-3 standard deviations (elevated)  
+# 🔴 Red: Beyond 3 standard deviations (extreme)
+```
+
 ## User Preferences (SIMPLIFIED)
 
 ### New Workflow

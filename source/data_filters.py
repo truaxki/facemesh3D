@@ -717,4 +717,99 @@ class DataFilters:
             print(f"   Max:  {np.max(rmsds):.4f}")
         
         print(f"✅ Statistical baseline alignment complete!")
-        return aligned_frames 
+        return aligned_frames
+    
+    @staticmethod
+    def generate_statistical_deviation_colors(frames_data: List[Dict], statistical_baseline: Dict) -> List[Dict]:
+        """
+        Generate colors based on statistical deviation from baseline mean.
+        
+        Color scheme:
+        - Blue: Within 1 standard deviation (normal)
+        - Yellow: 1-3 standard deviations (elevated)
+        - Red: Beyond 3 standard deviations (extreme)
+        
+        Args:
+            frames_data: List of frame dictionaries with 'points'
+            statistical_baseline: Dictionary from create_statistical_baseline_from_csv()
+            
+        Returns:
+            List of frame dictionaries with updated colors
+        """
+        if 'baseline_points' not in statistical_baseline or 'std_dev' not in statistical_baseline:
+            raise ValueError("Statistical baseline must contain 'baseline_points' and 'std_dev'")
+        
+        baseline_points = statistical_baseline['baseline_points']
+        baseline_std_dev = statistical_baseline['std_dev']
+        
+        print(f"🎨 Generating statistical deviation colors for {len(frames_data)} frames")
+        print(f"📊 Using baseline with {len(baseline_points)} landmarks")
+        
+        colored_frames = []
+        all_deviations = []
+        
+        for frame_idx, frame_data in enumerate(frames_data):
+            current_points = frame_data['points']
+            
+            if len(current_points) != len(baseline_points):
+                print(f"⚠️ Frame {frame_idx}: Point count mismatch, using default colors")
+                colored_frame = frame_data.copy()
+                colored_frame['colors'] = np.ones((len(current_points), 3)) * [0.7, 0.7, 0.9]
+                colored_frames.append(colored_frame)
+                continue
+            
+            # Calculate deviation from baseline mean for each point
+            point_deviations = current_points - baseline_points  # (N, 3) array
+            
+            # Calculate magnitude of deviation for each point
+            deviation_magnitudes = np.linalg.norm(point_deviations, axis=1)  # (N,) array
+            
+            # Calculate standard deviation magnitudes for normalization
+            std_dev_magnitudes = np.linalg.norm(baseline_std_dev, axis=1)  # (N,) array
+            
+            # Avoid division by zero
+            std_dev_magnitudes = np.where(std_dev_magnitudes == 0, 1e-6, std_dev_magnitudes)
+            
+            # Calculate how many standard deviations each point is from baseline
+            normalized_deviations = deviation_magnitudes / std_dev_magnitudes  # (N,) array
+            
+            # Store for global statistics
+            all_deviations.extend(normalized_deviations)
+            
+            # Generate colors based on deviation levels
+            colors = np.zeros((len(current_points), 3))
+            
+            for i, deviation in enumerate(normalized_deviations):
+                if deviation <= 1.0:
+                    # Within 1 std dev - Blue gradient (darker blue = closer to baseline)
+                    intensity = deviation  # 0 to 1
+                    colors[i] = [0, 0, 1.0 - 0.3 * intensity]  # Dark blue to medium blue
+                elif deviation <= 3.0:
+                    # 1-3 std dev - Blue to Yellow gradient
+                    intensity = (deviation - 1.0) / 2.0  # 0 to 1
+                    colors[i] = [intensity, intensity, 1.0 - intensity]  # Blue to yellow
+                else:
+                    # Beyond 3 std dev - Yellow to Red gradient
+                    intensity = min((deviation - 3.0) / 2.0, 1.0)  # 0 to 1, capped at 1
+                    colors[i] = [1.0, 1.0 - intensity, 0]  # Yellow to red
+            
+            # Create colored frame
+            colored_frame = frame_data.copy()
+            colored_frame['colors'] = colors
+            colored_frame['statistical_deviations'] = normalized_deviations
+            colored_frame['deviation_magnitudes'] = deviation_magnitudes
+            
+            colored_frames.append(colored_frame)
+        
+        # Calculate and print global statistics
+        if all_deviations:
+            all_deviations = np.array(all_deviations)
+            
+            print(f"📈 Statistical deviation coloring statistics:")
+            print(f"   Mean deviation: {np.mean(all_deviations):.3f} std devs")
+            print(f"   Max deviation: {np.max(all_deviations):.3f} std devs")
+            print(f"   Points > 1 std dev: {np.sum(all_deviations > 1.0)} ({100*np.sum(all_deviations > 1.0)/len(all_deviations):.1f}%)")
+            print(f"   Points > 3 std dev: {np.sum(all_deviations > 3.0)} ({100*np.sum(all_deviations > 3.0)/len(all_deviations):.1f}%)")
+        
+        print(f"✅ Statistical deviation coloring complete!")
+        return colored_frames 
