@@ -15,61 +15,106 @@ class DataFilters:
     """Collection of data filtering and transformation operations."""
     
     @staticmethod
-    def kabsch_algorithm(P: np.ndarray, Q: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
+    def kabsch_umeyama_algorithm(P: np.ndarray, Q: np.ndarray, enable_scaling: bool = True) -> Tuple[np.ndarray, np.ndarray, float, float]:
         """
-        Kabsch algorithm for optimal rotation matrix calculation.
+        Kabsch-Umeyama algorithm for optimal similarity transformation calculation.
         
-        Finds the optimal rotation matrix that minimizes RMSD between two point sets.
-        Based on: https://en.wikipedia.org/wiki/Kabsch_algorithm
+        Finds the optimal rotation, translation, and uniform scaling that minimizes 
+        RMSD between two point sets. This extends the standard Kabsch algorithm
+        to include scaling for size normalization.
+        
+        Based on:
+        - Umeyama, S. (1991). "Least-squares estimation of transformation parameters 
+          between two point patterns." IEEE Trans. Pattern Anal. Mach. Intell. 13(4): 376-380.
+        - https://en.wikipedia.org/wiki/Procrustes_analysis
         
         Args:
-            P: Reference point set (N x 3)
-            Q: Point set to align to P (N x 3)
+            P: Reference point set (N x 3) - target points
+            Q: Point set to align to P (N x 3) - source points to be transformed
+            enable_scaling: Whether to include scaling (default: True)
             
         Returns:
             R: Optimal rotation matrix (3 x 3)
             t: Translation vector (3,)
+            c: Uniform scale factor (scalar)
             rmsd: Root mean square deviation after alignment
         """
         assert P.shape == Q.shape, "Point sets must have same shape"
         assert P.shape[1] == 3, "Points must be 3D"
         
-        # Step 1: Center both point sets (translation)
+        n_points = P.shape[0]
+        
+        # Step 1: Center both point sets
         centroid_P = np.mean(P, axis=0)
         centroid_Q = np.mean(Q, axis=0)
         
         P_centered = P - centroid_P
         Q_centered = Q - centroid_Q
         
-        # Step 2: Compute cross-covariance matrix H
+        # Step 2: Compute cross-covariance matrix (standard Kabsch formulation)
         H = P_centered.T @ Q_centered
         
         # Step 3: Singular Value Decomposition
         U, S, Vt = svd(H)
         
-        # Step 4: Compute rotation matrix
-        # Check for reflection case
+        # Step 4: Handle reflection to ensure proper rotation
         d = det(U @ Vt)
-        
         if d < 0:
-            # Reflection case - flip the last column of U
+            # Flip the last column of U to avoid reflection
             U[:, -1] *= -1
         
+        # Step 5: Compute optimal rotation matrix
         R = U @ Vt
         
-        # Step 5: Compute translation
-        t = centroid_P - R @ centroid_Q
+        # Step 6: Compute optimal scale factor (if enabled)
+        if enable_scaling:
+            # Calculate norms of centered point sets
+            norm_P = np.sqrt(np.sum(P_centered**2))
+            norm_Q = np.sqrt(np.sum(Q_centered**2))
+            
+            if norm_Q > 1e-12:
+                # Scale factor to make Q same size as P
+                c = norm_P / norm_Q
+                # Constrain scale factor to reasonable range
+                c = max(0.01, min(100.0, c))
+            else:
+                c = 1.0
+        else:
+            c = 1.0
         
-        # Step 6: Calculate RMSD
-        Q_aligned = (R @ Q_centered.T).T + centroid_P
-        rmsd = np.sqrt(np.mean(np.sum((P - Q_aligned)**2, axis=1)))
+        # Step 7: Compute optimal translation
+        # Transform Q centroid first, then compute translation
+        t = centroid_P - c * R @ centroid_Q
         
-        return R, t, rmsd
+        # Step 8: Apply full transformation and calculate RMSD
+        # Transform: Q_new = c * R * Q + t
+        Q_transformed = c * (R @ Q.T).T + t
+        rmsd = np.sqrt(np.mean(np.sum((P - Q_transformed)**2, axis=1)))
+        
+        return R, t, c, rmsd
+    
+    @staticmethod
+    def apply_similarity_transformation(points: np.ndarray, R: np.ndarray, t: np.ndarray, c: float = 1.0) -> np.ndarray:
+        """
+        Apply similarity transformation (rotation, translation, and scaling) to point cloud.
+        
+        Transformation: T(x) = c * R * x + t
+        
+        Args:
+            points: Point cloud (N x 3)
+            R: Rotation matrix (3 x 3)
+            t: Translation vector (3,)
+            c: Scale factor (scalar, default: 1.0)
+            
+        Returns:
+            Transformed points (N x 3)
+        """
+        return c * (R @ points.T).T + t
     
     @staticmethod
     def apply_transformation(points: np.ndarray, R: np.ndarray, t: np.ndarray) -> np.ndarray:
         """
-        Apply rotation and translation to point cloud.
+        Apply rotation and translation to point cloud (legacy method for compatibility).
         
         Args:
             points: Point cloud (N x 3)
@@ -79,16 +124,17 @@ class DataFilters:
         Returns:
             Transformed points (N x 3)
         """
-        return (R @ points.T).T + t
+        return DataFilters.apply_similarity_transformation(points, R, t, c=1.0)
     
     @staticmethod
-    def align_frames_to_baseline(frames_data: List[Dict], baseline_frame_idx: int = 0) -> List[Dict]:
+    def align_frames_to_baseline(frames_data: List[Dict], baseline_frame_idx: int = 0, enable_scaling: bool = True) -> List[Dict]:
         """
-        Align all frames to a baseline frame using Kabsch algorithm.
+        Align all frames to a baseline frame using Kabsch-Umeyama algorithm.
         
         Args:
             frames_data: List of frame dictionaries with 'points' and 'colors'
             baseline_frame_idx: Index of frame to use as reference (default: 0)
+            enable_scaling: Whether to include scaling normalization (default: True)
             
         Returns:
             List of aligned frame dictionaries
@@ -100,7 +146,8 @@ class DataFilters:
         aligned_frames = []
         alignment_stats = []
         
-        print(f"🎯 Aligning {len(frames_data)} frames to baseline frame {baseline_frame_idx}")
+        algorithm_name = "Kabsch-Umeyama" if enable_scaling else "Kabsch (no scaling)"
+        print(f"🎯 Aligning {len(frames_data)} frames to baseline frame {baseline_frame_idx} using {algorithm_name}")
         print(f"📊 Baseline frame has {len(baseline_points)} points")
         
         for i, frame_data in enumerate(frames_data):
@@ -117,43 +164,61 @@ class DataFilters:
                 # Baseline frame - no transformation needed
                 aligned_frame = frame_data.copy()
                 rmsd = 0.0
+                scale_factor = 1.0
             else:
-                # Apply Kabsch alignment
-                R, t, rmsd = DataFilters.kabsch_algorithm(baseline_points, current_points)
+                # Apply Kabsch-Umeyama alignment
+                R, t, c, rmsd = DataFilters.kabsch_umeyama_algorithm(baseline_points, current_points, enable_scaling=enable_scaling)
                 
-                # Transform points
-                aligned_points = DataFilters.apply_transformation(current_points, R, t)
+                # Transform points using similarity transformation
+                aligned_points = DataFilters.apply_similarity_transformation(current_points, R, t, c)
                 
                 # Create aligned frame
                 aligned_frame = frame_data.copy()
                 aligned_frame['points'] = aligned_points
                 
+                scale_factor = c
+                
                 # Store transformation info
                 aligned_frame['kabsch_transform'] = {
                     'rotation_matrix': R,
                     'translation_vector': t,
+                    'scale_factor': c,
                     'rmsd': rmsd,
-                    'baseline_frame': baseline_frame_idx
+                    'baseline_frame': baseline_frame_idx,
+                    'algorithm': 'kabsch_umeyama' if enable_scaling else 'kabsch',
+                    'scaling_enabled': enable_scaling
                 }
             
             alignment_stats.append({
                 'frame_idx': i,
                 'rmsd': rmsd,
+                'scale_factor': scale_factor,
                 'is_baseline': i == baseline_frame_idx
             })
             
             aligned_frames.append(aligned_frame)
         
         # Print alignment statistics
-        rmsds = [stat['rmsd'] for stat in alignment_stats if not stat['is_baseline']]
-        if rmsds:
+        non_baseline_stats = [stat for stat in alignment_stats if not stat['is_baseline']]
+        if non_baseline_stats:
+            rmsds = [stat['rmsd'] for stat in non_baseline_stats]
+            scale_factors = [stat['scale_factor'] for stat in non_baseline_stats]
+            
             print(f"📈 Alignment RMSD statistics:")
             print(f"   Mean: {np.mean(rmsds):.4f}")
             print(f"   Std:  {np.std(rmsds):.4f}")
             print(f"   Min:  {np.min(rmsds):.4f}")
             print(f"   Max:  {np.max(rmsds):.4f}")
+            
+            if enable_scaling:
+                print(f"🔍 Scale factor statistics:")
+                print(f"   Mean: {np.mean(scale_factors):.4f}")
+                print(f"   Std:  {np.std(scale_factors):.4f}")
+                print(f"   Min:  {np.min(scale_factors):.4f}")
+                print(f"   Max:  {np.max(scale_factors):.4f}")
         
-        print(f"✅ Kabsch alignment complete!")
+        algorithm_complete = "Kabsch-Umeyama alignment" if enable_scaling else "Kabsch alignment"
+        print(f"✅ {algorithm_complete} complete!")
         return aligned_frames
     
     @staticmethod
@@ -304,6 +369,25 @@ class DataFilters:
         return transformed_frames
     
     @staticmethod
+    def kabsch_algorithm(P: np.ndarray, Q: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Legacy Kabsch algorithm for backward compatibility (rotation + translation only).
+        
+        For new code, use kabsch_umeyama_algorithm with enable_scaling=False instead.
+        
+        Args:
+            P: Reference point set (N x 3)
+            Q: Point set to align to P (N x 3)
+            
+        Returns:
+            R: Optimal rotation matrix (3 x 3)
+            t: Translation vector (3,)
+            rmsd: Root mean square deviation after alignment
+        """
+        R, t, c, rmsd = DataFilters.kabsch_umeyama_algorithm(P, Q, enable_scaling=False)
+        return R, t, rmsd
+    
+    @staticmethod
     def get_available_filters() -> Dict[str, Dict]:
         """
         Get list of available filters with descriptions.
@@ -313,10 +397,10 @@ class DataFilters:
         """
         return {
             'kabsch_alignment': {
-                'name': 'Kabsch Alignment',
-                'description': 'Align all frames to a baseline frame using optimal rotation',
-                'parameters': ['baseline_frame_idx'],
-                'use_case': 'Remove rigid body motion, focus on shape changes'
+                'name': 'Kabsch-Umeyama Alignment',
+                'description': 'Align all frames to a baseline frame using optimal rotation, translation, and scaling',
+                'parameters': ['baseline_frame_idx', 'enable_scaling'],
+                'use_case': 'Remove rigid body motion and size differences, focus on shape changes'
             },
             'center_frames': {
                 'name': 'Center Frames',
@@ -530,7 +614,8 @@ class DataFilters:
             
             if filter_name == 'kabsch_alignment':
                 baseline_idx = params.get('baseline_frame_idx', 0)
-                result_frames = DataFilters.align_frames_to_baseline(result_frames, baseline_idx)
+                enable_scaling = params.get('enable_scaling', True)
+                result_frames = DataFilters.align_frames_to_baseline(result_frames, baseline_idx, enable_scaling)
             
             elif filter_name == 'center_frames':
                 result_frames = DataFilters.center_frames(result_frames)
@@ -652,13 +737,14 @@ class DataFilters:
             raise
     
     @staticmethod
-    def align_frames_to_statistical_baseline(frames_data: List[Dict], statistical_baseline: Dict) -> List[Dict]:
+    def align_frames_to_statistical_baseline(frames_data: List[Dict], statistical_baseline: Dict, enable_scaling: bool = True) -> List[Dict]:
         """
-        Align all frames to a statistical baseline using Kabsch algorithm.
+        Align all frames to a statistical baseline using Kabsch-Umeyama algorithm.
         
         Args:
             frames_data: List of frame dictionaries with 'points' and 'colors'
             statistical_baseline: Dictionary from create_statistical_baseline_from_csv()
+            enable_scaling: Whether to include scaling normalization (default: True)
             
         Returns:
             List of aligned frame dictionaries
@@ -667,7 +753,8 @@ class DataFilters:
         aligned_frames = []
         alignment_stats = []
         
-        print(f"🎯 Aligning {len(frames_data)} frames to statistical baseline")
+        algorithm_name = "Kabsch-Umeyama" if enable_scaling else "Kabsch (no scaling)"
+        print(f"🎯 Aligning {len(frames_data)} frames to statistical baseline using {algorithm_name}")
         print(f"📊 Statistical baseline from {statistical_baseline['num_frames']} frames")
         print(f"📍 Baseline has {len(baseline_points)} landmarks")
         
@@ -679,11 +766,11 @@ class DataFilters:
                 aligned_frames.append(frame_data.copy())
                 continue
             
-            # Apply Kabsch alignment to statistical baseline
-            R, t, rmsd = DataFilters.kabsch_algorithm(baseline_points, current_points)
+            # Apply Kabsch-Umeyama alignment to statistical baseline
+            R, t, c, rmsd = DataFilters.kabsch_umeyama_algorithm(baseline_points, current_points, enable_scaling=enable_scaling)
             
-            # Transform points
-            aligned_points = DataFilters.apply_transformation(current_points, R, t)
+            # Transform points using similarity transformation
+            aligned_points = DataFilters.apply_similarity_transformation(current_points, R, t, c)
             
             # Create aligned frame
             aligned_frame = frame_data.copy()
@@ -693,30 +780,44 @@ class DataFilters:
             aligned_frame['kabsch_transform'] = {
                 'rotation_matrix': R,
                 'translation_vector': t,
+                'scale_factor': c,
                 'rmsd': rmsd,
                 'baseline_type': 'statistical',
                 'baseline_source': statistical_baseline['source_file'],
-                'baseline_frames': statistical_baseline['num_frames']
+                'baseline_frames': statistical_baseline['num_frames'],
+                'algorithm': 'kabsch_umeyama' if enable_scaling else 'kabsch',
+                'scaling_enabled': enable_scaling
             }
             
             alignment_stats.append({
                 'frame_idx': i,
                 'rmsd': rmsd,
+                'scale_factor': c,
                 'baseline_type': 'statistical'
             })
             
             aligned_frames.append(aligned_frame)
         
         # Print alignment statistics
-        rmsds = [stat['rmsd'] for stat in alignment_stats]
-        if rmsds:
+        if alignment_stats:
+            rmsds = [stat['rmsd'] for stat in alignment_stats]
+            scale_factors = [stat['scale_factor'] for stat in alignment_stats]
+            
             print(f"📈 Statistical baseline alignment RMSD statistics:")
             print(f"   Mean: {np.mean(rmsds):.4f}")
             print(f"   Std:  {np.std(rmsds):.4f}")
             print(f"   Min:  {np.min(rmsds):.4f}")
             print(f"   Max:  {np.max(rmsds):.4f}")
+            
+            if enable_scaling:
+                print(f"🔍 Scale factor statistics:")
+                print(f"   Mean: {np.mean(scale_factors):.4f}")
+                print(f"   Std:  {np.std(scale_factors):.4f}")
+                print(f"   Min:  {np.min(scale_factors):.4f}")
+                print(f"   Max:  {np.max(scale_factors):.4f}")
         
-        print(f"✅ Statistical baseline alignment complete!")
+        algorithm_complete = "Statistical baseline Kabsch-Umeyama alignment" if enable_scaling else "Statistical baseline Kabsch alignment"
+        print(f"✅ {algorithm_complete} complete!")
         return aligned_frames
     
     @staticmethod

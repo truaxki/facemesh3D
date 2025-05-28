@@ -41,6 +41,7 @@ class InteractiveAnimationPlayer:
         self.running = True
         self.speed_multiplier = 1.0
         self.last_frame_time = 0
+        self.show_coordinate_frame = False  # NEW: Coordinate frame toggle
         
         # Colors for background cycling
         self.bg_colors = [
@@ -62,7 +63,7 @@ class InteractiveAnimationPlayer:
         render_opt = self.vis.get_render_option()
         render_opt.background_color = np.array(self.bg_colors[0][0])
         render_opt.point_size = 2.5
-        render_opt.show_coordinate_frame = True
+        render_opt.show_coordinate_frame = self.show_coordinate_frame
         render_opt.light_on = True
         
         # Create initial point cloud from first frame
@@ -105,6 +106,7 @@ class InteractiveAnimationPlayer:
         # Other controls
         self.vis.register_key_callback(ord("B"), self.on_key_background) # B - background
         self.vis.register_key_callback(ord("S"), self.on_key_screenshot) # S - screenshot
+        self.vis.register_key_callback(ord("C"), self.on_key_coordinate) # C - coordinate frame
         self.vis.register_key_callback(ord("H"), self.on_key_help)       # H - help
         self.vis.register_key_callback(ord("Q"), self.on_key_quit)       # Q - quit
         
@@ -258,6 +260,15 @@ class InteractiveAnimationPlayer:
         print(f"📸 Screenshot: {filename}")
         return False
     
+    def on_key_coordinate(self, vis):
+        """Toggle coordinate frame display."""
+        self.show_coordinate_frame = not self.show_coordinate_frame
+        render_opt = self.vis.get_render_option()
+        render_opt.show_coordinate_frame = self.show_coordinate_frame
+        status = "🎯 Coordinate frame ON (target visible)" if self.show_coordinate_frame else "⚪ Coordinate frame OFF (target hidden)"
+        print(status)
+        return False
+    
     def on_key_help(self, vis):
         """Show help."""
         self.print_controls()
@@ -312,6 +323,7 @@ class InteractiveAnimationPlayer:
         print("   1              : 🎯 Normal speed")
         print("   B              : 🎨 Change background")
         print("   S              : 📸 Save screenshot")
+        print("   C              : 🎯 Toggle coordinate frame (target pattern)")
         print("   H              : ❓ Show this help")
         print("   Q              : 👋 Quit")
         print("="*70)

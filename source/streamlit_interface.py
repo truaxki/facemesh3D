@@ -41,36 +41,43 @@ class StreamlitInterface:
     
     def setup_session_state(self):
         """Initialize session state variables."""
-        if 'csv_file_path' not in st.session_state:
-            st.session_state.csv_file_path = None
+        # File handling
         if 'csv_data' not in st.session_state:
             st.session_state.csv_data = None
-        if 'frames_data' not in st.session_state:
-            st.session_state.frames_data = None
-        if 'animation_created' not in st.session_state:
-            st.session_state.animation_created = False
-        if 'animation_name' not in st.session_state:
-            st.session_state.animation_name = ""
-        if 'current_frame_idx' not in st.session_state:
-            st.session_state.current_frame_idx = 0
-        if 'export_requested' not in st.session_state:
-            st.session_state.export_requested = False
+        if 'csv_file_path' not in st.session_state:
+            st.session_state.csv_file_path = None
         
-        # Animation settings with defaults
-        if 'color_mode' not in st.session_state:
-            st.session_state.color_mode = 'local_movement'
-        if 'z_scale' not in st.session_state:
-            st.session_state.z_scale = 25.0
-        if 'animation_fps' not in st.session_state:
-            st.session_state.animation_fps = 15
-        
-        # Custom baseline functionality
+        # Baseline configuration
         if 'baseline_mode' not in st.session_state:
             st.session_state.baseline_mode = 'first_frame'  # 'first_frame' or 'custom_csv'
         if 'baseline_csv_path' not in st.session_state:
             st.session_state.baseline_csv_path = None
         if 'statistical_baseline' not in st.session_state:
             st.session_state.statistical_baseline = None
+            
+        # Animation settings
+        if 'color_mode' not in st.session_state:
+            st.session_state.color_mode = 'local_movement'
+        if 'z_scale' not in st.session_state:
+            st.session_state.z_scale = 25.0
+        if 'animation_fps' not in st.session_state:
+            st.session_state.animation_fps = 15
+        if 'enable_scaling' not in st.session_state:
+            st.session_state.enable_scaling = True  # Default to enabled for Kabsch-Umeyama
+            
+        # Animation state
+        if 'animation_created' not in st.session_state:
+            st.session_state.animation_created = False
+        if 'frames_data' not in st.session_state:
+            st.session_state.frames_data = None
+        if 'animation_name' not in st.session_state:
+            st.session_state.animation_name = None
+        if 'current_frame_idx' not in st.session_state:
+            st.session_state.current_frame_idx = 0
+            
+        # Export state
+        if 'export_requested' not in st.session_state:
+            st.session_state.export_requested = False
     
     def run(self):
         """Main application entry point."""
@@ -333,6 +340,25 @@ class StreamlitInterface:
                 Each point is colored based on how far it deviates from its expected position in the baseline.
                 """)
             
+            # Alignment settings
+            st.markdown("---")
+            st.subheader("🔧 Alignment Settings")
+            
+            # Scaling option
+            enable_scaling = st.checkbox(
+                "Enable Size Normalization",
+                value=True,
+                help="Include scaling in Kabsch-Umeyama alignment to normalize size differences"
+            )
+            st.session_state.enable_scaling = enable_scaling
+            
+            if enable_scaling:
+                st.success("🔍 **Kabsch-Umeyama**: Rotation + Translation + Scaling")
+                st.caption("Removes size differences between subjects/sessions")
+            else:
+                st.info("🎯 **Kabsch Only**: Rotation + Translation")
+                st.caption("Preserves size differences (legacy behavior)")
+            
             # Hidden but set defaults
             st.session_state.z_scale = 25.0  # Always use 25x
             
@@ -402,29 +428,39 @@ class StreamlitInterface:
                 # Apply Kabsch alignment
                 status_text.text("Applying Kabsch alignment to remove head motion...")
                 
+                # Get scaling setting
+                enable_scaling = st.session_state.get('enable_scaling', True)
+                alignment_method = "Kabsch-Umeyama" if enable_scaling else "Kabsch"
+                
                 # Choose alignment method based on baseline mode
                 if st.session_state.baseline_mode == 'custom_csv' and st.session_state.statistical_baseline is not None:
                     # Use statistical baseline
-                    status_text.text("Applying Kabsch alignment with custom statistical baseline...")
+                    status_text.text(f"Applying {alignment_method} alignment with custom statistical baseline...")
                     frames_data = DataFilters.align_frames_to_statistical_baseline(
                         frames_data, 
-                        st.session_state.statistical_baseline
+                        st.session_state.statistical_baseline,
+                        enable_scaling=enable_scaling
                     )
                     baseline_info = {
                         'type': 'statistical',
                         'source_file': Path(st.session_state.statistical_baseline['source_file']).name,
-                        'num_baseline_frames': st.session_state.statistical_baseline['num_frames']
+                        'num_baseline_frames': st.session_state.statistical_baseline['num_frames'],
+                        'scaling_enabled': enable_scaling,
+                        'algorithm': alignment_method
                     }
                 else:
                     # Use first frame baseline (default)
-                    status_text.text("Applying Kabsch alignment with first frame baseline...")
+                    status_text.text(f"Applying {alignment_method} alignment with first frame baseline...")
                     frames_data = DataFilters.align_frames_to_baseline(
                         frames_data, 
-                        baseline_frame_idx=0
+                        baseline_frame_idx=0,
+                        enable_scaling=enable_scaling
                     )
                     baseline_info = {
                         'type': 'first_frame',
-                        'baseline_frame_idx': 0
+                        'baseline_frame_idx': 0,
+                        'scaling_enabled': enable_scaling,
+                        'algorithm': alignment_method
                     }
                 
                 # Apply coloring based on mode
