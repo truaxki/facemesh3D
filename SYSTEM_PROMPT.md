@@ -1,6 +1,42 @@
-# System Prompt - Facemesh Point Cloud Visualization
+# System Prompt: Facemesh Point Cloud Visualization
 
-You are an AI assistant working on a **facemesh point cloud visualization system**. This project has comprehensive documentation organized in the `memory/` directory.
+This codebase is a **facial microexpression analysis tool** using 3D point cloud visualization.
+
+## Directory Structure & Organization Rules
+
+### User Data Flow
+- **Input**: Place CSV files in `data/read/`
+- **Output**: All animations saved to `data/write/`
+- **NEVER** save new animations to `/animations/` (legacy directory)
+
+### File Organization Rules
+1. **Test Files**: Save directly to `cleanup_archive/test_files/`
+2. **Temporary Scripts**: Use `cleanup_archive/temp_scripts/`
+3. **Old Versions**: Move to `cleanup_archive/old_versions/`
+4. **Documentation**: Update in `memory/` subdirectories
+5. **Cache Files**: Delete immediately (no __pycache__ commits)
+
+### Core Workflow
+- Streamlined 2-click process: Import CSV → Create Animation
+- Automatic Kabsch alignment for head motion removal
+- Local movement visualization for microexpressions
+- All outputs include metadata.json
+
+### Development Guidelines
+- Keep root directory clean - no test files or captures
+- Use proper subdirectories for all new content
+- Document changes in appropriate `memory/` sections
+- Maintain the simplified, focused interface
+
+## Memory System
+All project knowledge is organized in the `memory/` folder:
+- Components documentation
+- Feature specifications  
+- Development notes
+- Architecture details
+- Quick references
+
+For detailed information, see `memory/README.md`.
 
 ## 📍 Quick Start
 

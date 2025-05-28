@@ -149,3 +149,103 @@ pip install -r requirements.txt
 ---
 
 **The perfect combination of web-based ease and desktop power!** 🎉 
+
+# Facemesh Point Cloud Visualization
+
+A streamlined tool for analyzing facial microexpressions through 3D point cloud visualization, optimized for facial landmark CSV data processing.
+
+## 🎯 Purpose
+
+This application focuses on facial landmark visualization and microexpression analysis with:
+- Automatic time-based sorting of frames
+- Kabsch alignment for head motion removal  
+- Local movement visualization
+- 2-click workflow: Import → Animate
+
+## 📁 Directory Organization
+
+### Where Files Go:
+
+| File Type | Location | Example |
+|-----------|----------|---------|
+| **Input CSV files** | `data/read/` | Your facial landmark CSVs |
+| **Output animations** | `data/write/` | Generated animations with metadata |
+| **Test scripts** | `cleanup_archive/test_files/` | test_*.py files |
+| **Temporary files** | `cleanup_archive/temp_scripts/` | One-off scripts |
+| **Old code versions** | `cleanup_archive/old_versions/` | Deprecated implementations |
+| **Documentation** | `memory/*/` | Feature docs, dev notes |
+
+### ⚠️ Important Rules:
+- **NEVER** save new animations to `/animations/` (legacy folder)
+- **NEVER** commit `__pycache__` directories
+- **ALWAYS** keep the root directory clean
+- **ALWAYS** use `data/write/` for outputs
+
+## 🚀 Quick Start
+
+1. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Prepare Your Data**
+   - Place facial landmark CSV files in `data/read/`
+   - Expected format: `feat_0_x, feat_0_y, feat_0_z, ...` for 478 landmarks
+   - Must include `Time (s)` column
+
+3. **Run the Application**
+   ```bash
+   cd source
+   streamlit run streamlit_interface.py --server.port 8507
+   ```
+
+4. **Create Animation**
+   - Select your CSV file
+   - Click "Create Facial Animation"
+   - Animation auto-launches in 3D viewer
+
+## 📊 Features
+
+- **Automatic Time Sorting**: Ensures correct frame order
+- **Kabsch Alignment**: Removes head motion, isolates facial movement
+- **Local Movement Coloring**: Highlights microexpressions
+- **Interactive 3D Viewer**: Real-time playback with controls
+- **Video Export**: Generate MP4 files
+- **Metadata Tracking**: Every output includes processing details
+
+## 🔧 Configuration
+
+Default settings optimized for facial analysis:
+- Z-scale: 25x (enhances depth perception)
+- Kabsch alignment: Always enabled
+- FPS: 15 (adjustable in sidebar)
+- Color mode: Local movement (microexpressions)
+
+## 📚 Documentation
+
+Comprehensive documentation in `memory/`:
+- `memory/README.md` - Documentation overview
+- `memory/components/` - Component details
+- `memory/features/` - Feature specifications
+- `memory/workflows/` - Usage guides
+- `memory/development/` - Development notes
+
+## 🧹 Maintenance
+
+To keep the project clean:
+1. Run cleanup scripts periodically
+2. Move old files to `cleanup_archive/`
+3. Delete cache directories
+4. Update documentation in `memory/`
+
+## 🤝 Contributing
+
+When adding new features:
+1. Follow the directory structure
+2. Update relevant documentation
+3. Test files go in `cleanup_archive/test_files/`
+4. Keep the streamlined workflow intact
+
+## 📝 License
+
+[Your license information here] 

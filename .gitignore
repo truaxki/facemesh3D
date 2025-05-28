@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test outputs
+test_*.png
+test_*.json
+test_*.ply
+test_*.mp4
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+
+# Open3D captures (unless intentionally saved)
+DepthCamera_*.json
+DepthCapture_*.png
+ScreenCamera_*.json
+ScreenCapture_*.png
+RenderOption_*.json
+
+# User preferences (now in data/)
+user_preferences.json
+
+# Keep data/write clean - only committed examples
+data/write/*
+!data/write/README.txt
+
+# Don't track large animation files unless needed
+*.mp4
+*.avi
+*.mov
+
+# Streamlit
+.streamlit/ 
