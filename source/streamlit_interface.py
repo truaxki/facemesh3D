@@ -303,8 +303,6 @@ class StreamlitInterface:
     
     def apply_local_movement_coloring(self, frames_data):
         """Apply coloring based on frame-to-frame movement (microexpressions)."""
-        from visualization import PointCloudVisualizer
-        
         # Calculate frame-to-frame displacement
         for i in range(len(frames_data)):
             if i == 0:
@@ -341,7 +339,20 @@ class StreamlitInterface:
                 normalized = np.clip(displacement / p95, 0, 1) if p95 > 0 else displacement
                 
                 # Create color map (blue -> green -> yellow -> red)
-                colors = PointCloudVisualizer._create_movement_colormap(normalized)
+                colors = np.zeros((len(displacement), 3))
+                for j, intensity in enumerate(normalized):
+                    if intensity < 0.25:  # Very low movement - blue to cyan
+                        colors[j] = [0, intensity*4, 1.0]
+                    elif intensity < 0.5:  # Low movement - cyan to green
+                        t = (intensity - 0.25) * 4
+                        colors[j] = [0, 1.0, 1.0 - t]
+                    elif intensity < 0.75:  # Medium movement - green to yellow
+                        t = (intensity - 0.5) * 4
+                        colors[j] = [t, 1.0, 0]
+                    else:  # High movement - yellow to red
+                        t = (intensity - 0.75) * 4
+                        colors[j] = [1.0, 1.0 - t, 0]
+                
                 frames_data[i]['colors'] = colors
         
         return frames_data
@@ -366,12 +377,13 @@ class StreamlitInterface:
             
             # Display current frame
             frame_data = frames_data[frame_idx]
-            fig = PointCloudVisualizer.create_simple_animation_frame(
+            fig = PointCloudVisualizer.create_preview_plot(
                 frame_data['points'],
                 frame_data['colors'],
-                f"Frame {frame_idx + 1}/{len(frames_data)}"
+                title_prefix=f"Frame {frame_idx + 1}/{len(frames_data)}"
             )
             st.pyplot(fig)
+            plt.close(fig)  # Clean up memory
         
         with col2:
             st.subheader("Export")
