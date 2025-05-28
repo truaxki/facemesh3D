@@ -479,10 +479,14 @@ class FileManager:
             raise RuntimeError(f"Error loading folder: {e}")
     
     @staticmethod
-    def save_animation_frames(frames_data):
+    def save_animation_frames(frames_data, save_path=None):
         """Save animation frames for desktop viewer."""
-        timestamp = int(time.time() * 1000)
-        temp_dir = tempfile.mkdtemp(prefix=f"animation_{timestamp}_")
+        if save_path is None:
+            timestamp = int(time.time() * 1000)
+            temp_dir = tempfile.mkdtemp(prefix=f"animation_{timestamp}_")
+        else:
+            temp_dir = save_path
+            os.makedirs(temp_dir, exist_ok=True)
         
         try:
             ply_paths = []

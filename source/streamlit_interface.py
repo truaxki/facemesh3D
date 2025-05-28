@@ -271,7 +271,23 @@ class StreamlitInterface:
                 save_path.mkdir(exist_ok=True)
                 
                 status_text.text("Saving animation frames...")
-                FileManager.save_animation_frames(frames_data, str(save_path))
+                temp_dir, config_path, ply_paths = FileManager.save_animation_frames(frames_data, str(save_path))
+                
+                # Create metadata file
+                metadata = {
+                    'source_file': st.session_state.csv_file_path.name,
+                    'num_frames': len(frames_data),
+                    'num_landmarks': len(frames_data[0]['points']),
+                    'color_mode': st.session_state.color_mode,
+                    'z_scale': st.session_state.z_scale,
+                    'fps': st.session_state.animation_fps,
+                    'created_at': datetime.now().isoformat(),
+                    'kabsch_aligned': True,  # Always true in refactored version
+                }
+                
+                metadata_path = save_path / "metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
                 
                 # Store in session state
                 st.session_state.frames_data = frames_data
