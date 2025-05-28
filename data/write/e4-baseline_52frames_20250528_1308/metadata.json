@@ -1,0 +1,10 @@
+{
+  "source_file": "e4-baseline.csv",
+  "num_frames": 52,
+  "num_landmarks": 478,
+  "color_mode": "local_movement",
+  "z_scale": 25.0,
+  "fps": 15,
+  "created_at": "2025-05-28T13:08:02.854250",
+  "kabsch_aligned": true
+}
