@@ -57,6 +57,13 @@ streamlit run source/streamlit_interface.py --server.port 8507
 2. **Animation Tab**: Click "🎬 Create Facial Animation"
 3. **Auto-launch**: Interactive player opens automatically
 
+### Enhanced Workflow with Custom Baseline (NEW!)
+1. **Import Tab**: Select main CSV file
+2. **Baseline Config**: Choose baseline mode (first frame or custom CSV)
+3. **If Custom**: Select baseline CSV and generate statistical baseline
+4. **Animation Tab**: Create animation with chosen baseline
+5. **Auto-launch**: Interactive player opens automatically
+
 ### Key Session State Variables (Simplified)
 ```python
 st.session_state.csv_file_path      # Selected CSV file
@@ -64,13 +71,25 @@ st.session_state.csv_data           # Loaded dataframe
 st.session_state.frames_data        # Animation frames
 st.session_state.animation_created  # Animation ready flag
 st.session_state.color_mode         # 'local_movement' or 'single'
+
+# Custom baseline functionality (NEW!)
+st.session_state.baseline_mode      # 'first_frame' or 'custom_csv'
+st.session_state.baseline_csv_path  # Path to baseline CSV file
+st.session_state.statistical_baseline  # Generated baseline dictionary
 ```
 
 ### Fixed Parameters (No UI controls)
 ```python
 z_scale = 25.0                      # Optimal for facial data
 filter = 'kabsch_alignment'         # Always enabled
-baseline_frame = 0                  # First frame reference
+baseline_frame = 0                  # First frame reference (default)
+```
+
+### Custom Baseline Options (NEW!)
+```python
+baseline_mode = 'first_frame'       # Default: use first frame
+baseline_mode = 'custom_csv'        # Use statistical baseline from CSV
+statistical_baseline = {...}        # Generated from baseline CSV file
 ```
 
 ## User Preferences (SIMPLIFIED)

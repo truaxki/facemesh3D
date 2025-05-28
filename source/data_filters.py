@@ -559,4 +559,162 @@ class DataFilters:
             frame['applied_filters'] = applied_filters
         
         print(f"✅ Filter chain complete! Applied {len(applied_filters)} filters.")
-        return result_frames 
+        return result_frames
+    
+    @staticmethod
+    def create_statistical_baseline_from_csv(csv_file_path: str, z_scale: float = 25.0) -> Dict:
+        """
+        Create a statistical baseline from a CSV file containing multiple frames.
+        
+        Args:
+            csv_file_path: Path to CSV file with facial landmark data
+            z_scale: Z-axis scaling factor
+            
+        Returns:
+            Dictionary containing:
+            - 'baseline_points': Mean coordinates for each landmark (N x 3)
+            - 'std_dev': Standard deviation for each landmark (N x 3)
+            - 'num_frames': Number of frames used
+            - 'num_landmarks': Number of landmarks
+            - 'source_file': Source CSV filename
+        """
+        try:
+            # Load CSV data
+            df = pd.read_csv(csv_file_path)
+            
+            # Sort by time if available
+            if 'Time (s)' in df.columns:
+                df = df.sort_values('Time (s)').reset_index(drop=True)
+            
+            # Get coordinate columns
+            x_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_x')])
+            y_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_y')])
+            z_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_z')])
+            
+            if not (x_cols and y_cols and z_cols):
+                raise ValueError("CSV file does not contain facial landmark data (feat_N_x, feat_N_y, feat_N_z columns)")
+            
+            num_frames = len(df)
+            num_landmarks = len(x_cols)
+            
+            if num_landmarks != len(y_cols) or num_landmarks != len(z_cols):
+                raise ValueError("Inconsistent number of landmarks across x, y, z coordinates")
+            
+            print(f"📊 Processing baseline CSV: {num_frames} frames, {num_landmarks} landmarks")
+            
+            # Collect all frames data
+            all_frames_points = np.zeros((num_frames, num_landmarks, 3))
+            
+            for frame_idx in range(num_frames):
+                for landmark_idx in range(num_landmarks):
+                    all_frames_points[frame_idx, landmark_idx] = [
+                        df[x_cols[landmark_idx]].iloc[frame_idx],
+                        df[y_cols[landmark_idx]].iloc[frame_idx],
+                        df[z_cols[landmark_idx]].iloc[frame_idx] * z_scale
+                    ]
+            
+            # Calculate statistics across all frames
+            baseline_points = np.mean(all_frames_points, axis=0)  # Mean across frames
+            std_dev = np.std(all_frames_points, axis=0)  # Standard deviation across frames
+            
+            # Calculate additional statistics
+            min_coords = np.min(all_frames_points, axis=0)
+            max_coords = np.max(all_frames_points, axis=0)
+            
+            print(f"✅ Statistical baseline created:")
+            print(f"   Mean displacement range: {np.mean(std_dev):.4f}")
+            print(f"   Max std deviation: {np.max(std_dev):.4f}")
+            print(f"   Min std deviation: {np.min(std_dev):.4f}")
+            
+            return {
+                'baseline_points': baseline_points,
+                'std_dev': std_dev,
+                'min_coords': min_coords,
+                'max_coords': max_coords,
+                'num_frames': num_frames,
+                'num_landmarks': num_landmarks,
+                'source_file': csv_file_path,
+                'z_scale': z_scale,
+                'statistics': {
+                    'mean_std_dev': np.mean(std_dev),
+                    'max_std_dev': np.max(std_dev),
+                    'min_std_dev': np.min(std_dev),
+                    'coordinate_range': {
+                        'x': [float(np.min(min_coords[:, 0])), float(np.max(max_coords[:, 0]))],
+                        'y': [float(np.min(min_coords[:, 1])), float(np.max(max_coords[:, 1]))],
+                        'z': [float(np.min(min_coords[:, 2])), float(np.max(max_coords[:, 2]))]
+                    }
+                }
+            }
+            
+        except Exception as e:
+            print(f"❌ Error creating statistical baseline: {str(e)}")
+            raise
+    
+    @staticmethod
+    def align_frames_to_statistical_baseline(frames_data: List[Dict], statistical_baseline: Dict) -> List[Dict]:
+        """
+        Align all frames to a statistical baseline using Kabsch algorithm.
+        
+        Args:
+            frames_data: List of frame dictionaries with 'points' and 'colors'
+            statistical_baseline: Dictionary from create_statistical_baseline_from_csv()
+            
+        Returns:
+            List of aligned frame dictionaries
+        """
+        baseline_points = statistical_baseline['baseline_points']
+        aligned_frames = []
+        alignment_stats = []
+        
+        print(f"🎯 Aligning {len(frames_data)} frames to statistical baseline")
+        print(f"📊 Statistical baseline from {statistical_baseline['num_frames']} frames")
+        print(f"📍 Baseline has {len(baseline_points)} landmarks")
+        
+        for i, frame_data in enumerate(frames_data):
+            current_points = frame_data['points'].copy()
+            
+            if len(current_points) != len(baseline_points):
+                print(f"⚠️ Frame {i}: Point count mismatch ({len(current_points)} vs {len(baseline_points)})")
+                aligned_frames.append(frame_data.copy())
+                continue
+            
+            # Apply Kabsch alignment to statistical baseline
+            R, t, rmsd = DataFilters.kabsch_algorithm(baseline_points, current_points)
+            
+            # Transform points
+            aligned_points = DataFilters.apply_transformation(current_points, R, t)
+            
+            # Create aligned frame
+            aligned_frame = frame_data.copy()
+            aligned_frame['points'] = aligned_points
+            
+            # Store transformation info
+            aligned_frame['kabsch_transform'] = {
+                'rotation_matrix': R,
+                'translation_vector': t,
+                'rmsd': rmsd,
+                'baseline_type': 'statistical',
+                'baseline_source': statistical_baseline['source_file'],
+                'baseline_frames': statistical_baseline['num_frames']
+            }
+            
+            alignment_stats.append({
+                'frame_idx': i,
+                'rmsd': rmsd,
+                'baseline_type': 'statistical'
+            })
+            
+            aligned_frames.append(aligned_frame)
+        
+        # Print alignment statistics
+        rmsds = [stat['rmsd'] for stat in alignment_stats]
+        if rmsds:
+            print(f"📈 Statistical baseline alignment RMSD statistics:")
+            print(f"   Mean: {np.mean(rmsds):.4f}")
+            print(f"   Std:  {np.std(rmsds):.4f}")
+            print(f"   Min:  {np.min(rmsds):.4f}")
+            print(f"   Max:  {np.max(rmsds):.4f}")
+        
+        print(f"✅ Statistical baseline alignment complete!")
+        return aligned_frames 

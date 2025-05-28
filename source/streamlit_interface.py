@@ -41,22 +41,36 @@ class StreamlitInterface:
     
     def setup_session_state(self):
         """Initialize session state variables."""
-        defaults = {
-            'current_tab': 'Import',
-            'csv_file_path': None,
-            'csv_data': None,
-            'frames_data': None,
-            'animation_created': False,
-            'z_scale': 25.0,
-            'color_mode': 'local_movement',  # renamed from post_filter_movement
-            'animation_fps': 15,
-            'export_requested': False,
-            'current_frame_idx': 0
-        }
+        if 'csv_file_path' not in st.session_state:
+            st.session_state.csv_file_path = None
+        if 'csv_data' not in st.session_state:
+            st.session_state.csv_data = None
+        if 'frames_data' not in st.session_state:
+            st.session_state.frames_data = None
+        if 'animation_created' not in st.session_state:
+            st.session_state.animation_created = False
+        if 'animation_name' not in st.session_state:
+            st.session_state.animation_name = ""
+        if 'current_frame_idx' not in st.session_state:
+            st.session_state.current_frame_idx = 0
+        if 'export_requested' not in st.session_state:
+            st.session_state.export_requested = False
         
-        for key, value in defaults.items():
-            if key not in st.session_state:
-                st.session_state[key] = value
+        # Animation settings with defaults
+        if 'color_mode' not in st.session_state:
+            st.session_state.color_mode = 'local_movement'
+        if 'z_scale' not in st.session_state:
+            st.session_state.z_scale = 25.0
+        if 'animation_fps' not in st.session_state:
+            st.session_state.animation_fps = 15
+        
+        # Custom baseline functionality
+        if 'baseline_mode' not in st.session_state:
+            st.session_state.baseline_mode = 'first_frame'  # 'first_frame' or 'custom_csv'
+        if 'baseline_csv_path' not in st.session_state:
+            st.session_state.baseline_csv_path = None
+        if 'statistical_baseline' not in st.session_state:
+            st.session_state.statistical_baseline = None
     
     def run(self):
         """Main application entry point."""
@@ -75,32 +89,118 @@ class StreamlitInterface:
             self.render_analysis_tab()
     
     def render_import_tab(self):
-        """Render the Import tab for CSV file selection and preview."""
+        """Render the Import tab for CSV file selection."""
         st.header("Import Facial Landmark Data")
         
-        # File picker
+        # Get available CSV files
         csv_files = list(self.data_read_dir.glob("*.csv"))
-        if csv_files:
-            file_names = ["Select a file..."] + [f.name for f in csv_files]
-            selected_file = st.selectbox(
-                "Select CSV file from data/read/",
-                file_names,
-                help="Place your facial landmark CSV files in the data/read/ directory"
-            )
+        
+        if not csv_files:
+            st.warning(f"No CSV files found in `{self.data_read_dir}`")
+            st.info("Place your facial landmark CSV files in the `data/read/` directory.")
+            return
+        
+        # File selection
+        file_names = [f.name for f in csv_files]
+        selected_file = st.selectbox(
+            "Select CSV file:",
+            file_names,
+            help="Choose a facial landmark CSV file to import"
+        )
+        
+        if selected_file:
+            file_path = self.data_read_dir / selected_file
             
-            if selected_file != "Select a file...":
-                file_path = self.data_read_dir / selected_file
-                if file_path != st.session_state.csv_file_path:
-                    st.session_state.csv_file_path = file_path
-                    st.session_state.csv_data = None
-                    st.session_state.frames_data = None
-                    st.session_state.animation_created = False
-                
-                # Load and preview
+            # Load and preview if different file selected
+            if st.session_state.csv_file_path != file_path:
+                st.session_state.csv_file_path = file_path
                 self.load_and_preview_csv(file_path)
-        else:
-            st.warning("No CSV files found in data/read/ directory. Please add your facial landmark CSV files there.")
-            st.info("Expected format: feat_0_x, feat_0_y, feat_0_z, ... for 478 facial landmarks")
+        
+        # Baseline Configuration Section
+        if st.session_state.csv_data is not None:
+            st.markdown("---")
+            st.subheader("🎯 Baseline Configuration")
+            st.info("The baseline determines the reference frame for Kabsch alignment (head motion removal)")
+            
+            # Baseline mode selection
+            baseline_mode = st.radio(
+                "Baseline Mode:",
+                ["first_frame", "custom_csv"],
+                format_func=lambda x: {
+                    "first_frame": "First Frame (Default) - Use first frame of current data",
+                    "custom_csv": "Custom Statistical Baseline - Use mean from separate CSV file"
+                }[x],
+                help="Choose how to define the baseline for alignment"
+            )
+            st.session_state.baseline_mode = baseline_mode
+            
+            if baseline_mode == "custom_csv":
+                st.markdown("#### Custom Baseline CSV")
+                
+                # Baseline CSV file selection
+                baseline_file_names = [f.name for f in csv_files]
+                selected_baseline_file = st.selectbox(
+                    "Select baseline CSV file:",
+                    baseline_file_names,
+                    help="Choose a CSV file to generate statistical baseline from"
+                )
+                
+                if selected_baseline_file:
+                    baseline_file_path = self.data_read_dir / selected_baseline_file
+                    
+                    # Generate statistical baseline button
+                    if st.button("📊 Generate Statistical Baseline", type="secondary"):
+                        with st.spinner("Generating statistical baseline..."):
+                            try:
+                                statistical_baseline = DataFilters.create_statistical_baseline_from_csv(
+                                    str(baseline_file_path),
+                                    z_scale=st.session_state.z_scale
+                                )
+                                st.session_state.baseline_csv_path = baseline_file_path
+                                st.session_state.statistical_baseline = statistical_baseline
+                                
+                                st.success("✅ Statistical baseline generated successfully!")
+                                
+                                # Display baseline statistics
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Source Frames", statistical_baseline['num_frames'])
+                                with col2:
+                                    st.metric("Landmarks", statistical_baseline['num_landmarks'])
+                                with col3:
+                                    st.metric("Mean Std Dev", f"{statistical_baseline['statistics']['mean_std_dev']:.4f}")
+                                
+                                # Show coordinate ranges
+                                with st.expander("Baseline Statistics", expanded=False):
+                                    stats = statistical_baseline['statistics']
+                                    st.write("**Coordinate Ranges:**")
+                                    st.write(f"- X: {stats['coordinate_range']['x'][0]:.3f} to {stats['coordinate_range']['x'][1]:.3f}")
+                                    st.write(f"- Y: {stats['coordinate_range']['y'][0]:.3f} to {stats['coordinate_range']['y'][1]:.3f}")
+                                    st.write(f"- Z: {stats['coordinate_range']['z'][0]:.3f} to {stats['coordinate_range']['z'][1]:.3f}")
+                                    st.write(f"**Standard Deviation Range:** {stats['min_std_dev']:.4f} to {stats['max_std_dev']:.4f}")
+                                
+                            except Exception as e:
+                                st.error(f"Error generating statistical baseline: {str(e)}")
+                    
+                    # Show current baseline status
+                    if st.session_state.statistical_baseline is not None:
+                        baseline_info = st.session_state.statistical_baseline
+                        st.success(f"✅ Statistical baseline ready from {baseline_info['num_frames']} frames")
+                        st.caption(f"Source: {Path(baseline_info['source_file']).name}")
+                    else:
+                        st.warning("⚠️ Click 'Generate Statistical Baseline' to create custom baseline")
+            
+            else:
+                # First frame mode - clear any custom baseline
+                st.session_state.baseline_csv_path = None
+                st.session_state.statistical_baseline = None
+                st.info("✅ Using first frame of current data as baseline (default behavior)")
+        
+        # Show current status
+        if st.session_state.csv_data is not None:
+            st.markdown("---")
+            st.success("📁 Data loaded and ready for animation creation!")
+            st.info("Go to the **Animation** tab to create your visualization.")
     
     def load_and_preview_csv(self, file_path):
         """Load and preview the selected CSV file."""
@@ -214,6 +314,19 @@ class StreamlitInterface:
             # Hidden but set defaults
             st.session_state.z_scale = 25.0  # Always use 25x
             
+            # Show current baseline configuration
+            st.markdown("---")
+            st.subheader("🎯 Baseline Configuration")
+            if st.session_state.baseline_mode == 'custom_csv' and st.session_state.statistical_baseline is not None:
+                st.success("📊 Custom Statistical Baseline")
+                baseline_info = st.session_state.statistical_baseline
+                st.caption(f"Source: {Path(baseline_info['source_file']).name}")
+                st.caption(f"Frames: {baseline_info['num_frames']}")
+                st.caption(f"Mean Std Dev: {baseline_info['statistics']['mean_std_dev']:.4f}")
+            else:
+                st.info("🎯 First Frame Baseline")
+                st.caption("Using first frame of current data")
+            
             # Create animation button
             if st.button("🎬 Create Facial Animation", type="primary", use_container_width=True):
                 self.create_animation()
@@ -266,10 +379,31 @@ class StreamlitInterface:
                 
                 # Apply Kabsch alignment
                 status_text.text("Applying Kabsch alignment to remove head motion...")
-                frames_data = DataFilters.align_frames_to_baseline(
-                    frames_data, 
-                    baseline_frame_idx=0
-                )
+                
+                # Choose alignment method based on baseline mode
+                if st.session_state.baseline_mode == 'custom_csv' and st.session_state.statistical_baseline is not None:
+                    # Use statistical baseline
+                    status_text.text("Applying Kabsch alignment with custom statistical baseline...")
+                    frames_data = DataFilters.align_frames_to_statistical_baseline(
+                        frames_data, 
+                        st.session_state.statistical_baseline
+                    )
+                    baseline_info = {
+                        'type': 'statistical',
+                        'source_file': Path(st.session_state.statistical_baseline['source_file']).name,
+                        'num_baseline_frames': st.session_state.statistical_baseline['num_frames']
+                    }
+                else:
+                    # Use first frame baseline (default)
+                    status_text.text("Applying Kabsch alignment with first frame baseline...")
+                    frames_data = DataFilters.align_frames_to_baseline(
+                        frames_data, 
+                        baseline_frame_idx=0
+                    )
+                    baseline_info = {
+                        'type': 'first_frame',
+                        'baseline_frame_idx': 0
+                    }
                 
                 # Apply coloring based on mode
                 if st.session_state.color_mode == 'local_movement':
@@ -304,6 +438,7 @@ class StreamlitInterface:
                     'fps': st.session_state.animation_fps,
                     'created_at': datetime.now().isoformat(),
                     'kabsch_aligned': True,  # Always true in refactored version
+                    'baseline_info': baseline_info  # Include baseline information
                 }
                 
                 metadata_path = save_path / "metadata.json"
