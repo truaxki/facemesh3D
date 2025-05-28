@@ -31,6 +31,7 @@ memory/
 │   ├── current_session.md            # Current user preferences
 │   └── interaction_patterns.md       # Common user interaction patterns
 ├── development/                       # Development guidelines
+│   ├── environment_setup.md          # UV-based environment setup
 │   ├── coding_standards.md           # Code style and patterns
 │   ├── testing_guide.md              # Testing approaches
 │   └── deployment_guide.md           # Deployment procedures
@@ -55,12 +56,14 @@ This memory system serves multiple critical functions:
 ### For New Developers/AI Agents:
 
 1. **Start Here**: Read `index/quick_reference.md` for immediate context
-2. **Understand User**: Check `user_interactions/current_session.md` for preferences
-3. **System Overview**: Review `architecture/system_overview.md` for big picture
-4. **Deep Dive**: Explore specific components/features as needed
+2. **Environment Setup**: Check `development/environment_setup.md` for UV-based setup
+3. **Understand User**: Check `user_interactions/current_session.md` for preferences
+4. **System Overview**: Review `architecture/system_overview.md` for big picture
+5. **Deep Dive**: Explore specific components/features as needed
 
 ### For Specific Tasks:
 
+- **Environment Setup**: See `development/environment_setup.md` for UV workflow
 - **Fixing Export Issues**: See `workflows/export_pipeline.md`
 - **UI Changes**: MUST read `issues/ui_redesign_history.md` first
 - **Adding Features**: Check `development/coding_standards.md`
@@ -70,6 +73,7 @@ This memory system serves multiple critical functions:
 
 ### Essential Reading:
 - `index/quick_reference.md` - Critical information at a glance
+- `development/environment_setup.md` - Modern UV-based environment setup
 - `user_interactions/current_session.md` - User preferences and requirements
 - `architecture/system_overview.md` - System architecture understanding
 
@@ -92,9 +96,10 @@ This memory system serves multiple critical functions:
 ## ⚠️ Critical Rules
 
 1. **Always Check Memory First**: Before making changes, review relevant documentation
-2. **Update After Changes**: Document significant changes in appropriate sections
-3. **Respect User Preferences**: Always honor documented user preferences
-4. **Follow Established Patterns**: Use proven patterns from the documentation
+2. **Environment Setup**: Use UV workflow documented in `development/environment_setup.md`
+3. **Update After Changes**: Document significant changes in appropriate sections
+4. **Respect User Preferences**: Always honor documented user preferences
+5. **Follow Established Patterns**: Use proven patterns from the documentation
 
 ## 📊 Document Metadata
 
