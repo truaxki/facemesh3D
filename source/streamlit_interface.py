@@ -10,14 +10,12 @@ import json
 import os
 import numpy as np
 import pandas as pd
+import threading
 from pathlib import Path
 from datetime import datetime
 from file_manager import FileManager
-from video_exporter import VideoExporter
 from desktop_launcher import DesktopLauncher
-from visualization import PointCloudVisualizer
 from data_filters import DataFilters
-import matplotlib.pyplot as plt
 
 
 class StreamlitInterface:
@@ -50,9 +48,7 @@ class StreamlitInterface:
             'z_scale': 25.0,
             'color_mode': 'local_movement',  # renamed from post_filter_movement
             'baseline_frames': 30,
-            'animation_fps': 15,
-            'export_requested': False,
-            'current_frame_idx': 0
+            'animation_fps': 15
         }
         
         for key, value in defaults.items():
@@ -63,16 +59,22 @@ class StreamlitInterface:
         """Main application entry point."""
         st.title("🎭 Facial Microexpression Analysis")
         
-        # Create tabs
-        tab1, tab2, tab3 = st.tabs(["Import", "Animation", "Analysis"])
+        # Determine which tab should be active based on state
+        if hasattr(st.session_state, 'current_experiment') and st.session_state.current_experiment:
+            default_tab = 1  # Animation tab
+        else:
+            default_tab = 0  # Import tab
         
-        with tab1:
+        # Create tabs
+        tabs = st.tabs(["Import", "Animation", "Analysis"])
+        
+        with tabs[0]:
             self.render_import_tab()
         
-        with tab2:
+        with tabs[1]:
             self.render_animation_tab()
         
-        with tab3:
+        with tabs[2]:
             self.render_analysis_tab()
     
     def render_import_tab(self):
@@ -94,8 +96,7 @@ class StreamlitInterface:
             if selected_experiment != "Select an experiment...":
                 experiment_path = self.data_read_dir / selected_experiment
                 st.session_state.current_experiment = experiment_path
-                st.success(f"✅ Selected experiment: {selected_experiment}")
-                st.info("Go to the Animation tab to select a test and create visualization.")
+                st.success(f"✅ Selected experiment: {selected_experiment}\n\nGo to the Animation tab to select a test and create visualization.")
         else:
             st.warning("No experiment folders found in data/read/ directory. Please add your experiment folders containing facial landmark CSV files.")
             st.info("Expected folder structure: data/read/experiment_name/*.csv\nExpected CSV format: feat_0_x, feat_0_y, feat_0_z, ... for 478 facial landmarks")
@@ -210,7 +211,7 @@ class StreamlitInterface:
             else:
                 test_options = [f.stem for f in csv_files]
             
-            # Test selection dropdown
+            # Test selection dropdown (full width)
             selected_test = st.selectbox(
                 "Test Selection",
                 test_options,
@@ -227,47 +228,79 @@ class StreamlitInterface:
                 st.session_state.frames_data = None
                 st.session_state.animation_created = False
                 
-                # Load and preview
-                self.load_and_preview_csv(file_path)
-        
-        # Animation controls in sidebar
-        with st.sidebar:
-            st.subheader("Animation Settings")
+                # Load CSV silently
+                try:
+                    df = pd.read_csv(file_path)
+                    st.session_state.csv_data = df
+                except Exception as e:
+                    st.error(f"Error loading file: {str(e)}")
+                    return
             
-            # Baseline frames configuration
-            baseline_frames = st.number_input(
-                "Baseline Frames for Alignment",
-                min_value=1,
-                max_value=100,
-                value=30,
-                help="Number of initial frames to average for stable baseline (more frames = more stable, but slower processing)"
-            )
-            
-            # Color mode selection with better name
-            color_mode = st.selectbox(
-                "Color Mode",
-                ["local_movement", "single"],
-                format_func=lambda x: {
-                    "local_movement": "Local Movement (Microexpressions)",
-                    "single": "Single Color"
-                }[x],
-                help="Local Movement highlights facial movements after head motion removal"
-            )
-            st.session_state.color_mode = color_mode
-            st.session_state.baseline_frames = baseline_frames
-            
-            # Hidden but set defaults
+            # Always set these defaults even if settings are hidden
+            if 'baseline_frames' not in st.session_state:
+                st.session_state.baseline_frames = 30
+            if 'color_mode' not in st.session_state:
+                st.session_state.color_mode = 'local_movement'
             st.session_state.z_scale = 25.0  # Always use 25x
             
-            # Create animation button
-            if st.button("🎬 Create Facial Animation", type="primary", use_container_width=True):
-                self.create_animation()
+            # Create animation button - only show if data is loaded
+            if st.session_state.csv_data is not None:
+                if st.button("🎬 Create Facial Animation", type="primary", use_container_width=True):
+                    self.create_animation()
         
         # Main area - animation display
         if st.session_state.animation_created and st.session_state.frames_data:
-            self.render_animation_viewer()
+            st.success("✅ Animation created successfully!\n\nThe interactive 3D viewer has been launched in a separate window.")
+            
+            # Check if we need to launch the viewer
+            if hasattr(st.session_state, 'launch_viewer_pending') and st.session_state.launch_viewer_pending:
+                st.session_state.launch_viewer_pending = False
+                
+                # Capture data before thread
+                frames_data = st.session_state.frames_data
+                animation_fps = st.session_state.animation_fps
+                
+                # Launch viewer in background
+                def launch_viewer():
+                    success, message = DesktopLauncher.launch_interactive_animation_player(
+                        frames_data, 
+                        animation_fps
+                    )
+                    if not success:
+                        print(f"Failed to launch viewer: {message}")
+                
+                viewer_thread = threading.Thread(target=launch_viewer)
+                viewer_thread.daemon = True
+                viewer_thread.start()
+                
         else:
-            st.info("Select a test above and click '🎬 Create Facial Animation' in the sidebar to generate the animation.")
+            if st.session_state.csv_data is None:
+                st.info("Select a test above to begin.")
+        
+        # Settings footer (expandable) - always at the bottom
+        if hasattr(st.session_state, 'current_experiment'):
+            with st.expander("⚙️ Advanced Settings", expanded=False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.number_input(
+                        "Baseline Frames for Alignment",
+                        min_value=1,
+                        max_value=100,
+                        value=30,
+                        key='baseline_frames',
+                        help="Number of initial frames to average for stable baseline"
+                    )
+                with col2:
+                    st.selectbox(
+                        "Color Mode",
+                        ["local_movement", "single"],
+                        key='color_mode',
+                        format_func=lambda x: {
+                            "local_movement": "Local Movement (Microexpressions)",
+                            "single": "Single Color"
+                        }[x],
+                        help="Local Movement highlights facial movements after head motion removal"
+                    )
     
     def create_animation(self):
         """Create animation from loaded CSV data."""
@@ -365,19 +398,13 @@ class StreamlitInterface:
                 progress_bar.empty()
                 
                 st.success(f"✅ Animation created: {animation_name}")
+                st.info("Launching interactive 3D viewer...")
                 
-                # Auto-launch interactive player
-                with st.spinner("Launching interactive animation player..."):
-                    time.sleep(0.5)  # Brief pause for UI update
-                    success, message = DesktopLauncher.launch_interactive_animation_player(
-                        frames_data, 
-                        st.session_state.animation_fps
-                    )
-                    if success:
-                        st.success("🎬 Interactive animation player launched!")
-                        st.info("Use keyboard controls in the 3D window: SPACE=play/pause, N/P=next/prev frame")
-                    else:
-                        st.error(f"Failed to launch player: {message}")
+                # Set flag to launch viewer after rerun
+                st.session_state.launch_viewer_pending = True
+                
+                # Force UI update before launching viewer
+                st.rerun()
                 
         except Exception as e:
             st.error(f"Error creating animation: {str(e)}")
@@ -439,108 +466,6 @@ class StreamlitInterface:
                 frames_data[i]['colors'] = colors
         
         return frames_data
-    
-    def render_animation_viewer(self):
-        """Render the animation viewer interface."""
-        frames_data = st.session_state.frames_data
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.subheader("Animation Preview")
-            
-            # Frame slider
-            frame_idx = st.slider(
-                f"Frame (1-{len(frames_data)})", 
-                0, len(frames_data)-1, 
-                st.session_state.current_frame_idx
-            )
-            st.session_state.current_frame_idx = frame_idx
-            
-            # Display current frame
-            frame_data = frames_data[frame_idx]
-            fig = PointCloudVisualizer.create_preview_plot(
-                frame_data['points'],
-                frame_data['colors'],
-                title_prefix=f"Frame {frame_idx + 1}/{len(frames_data)}"
-            )
-            st.pyplot(fig)
-            plt.close(fig)  # Clean up memory
-        
-        with col2:
-            st.subheader("Export")
-            
-            # Export to MP4
-            if st.button("📹 Export to MP4", use_container_width=True):
-                st.session_state.export_requested = True
-            
-            if st.session_state.export_requested:
-                self.handle_video_export()
-            
-            # Animation info
-            st.markdown("---")
-            st.metric("Total Frames", len(frames_data))
-            st.metric("FPS", st.session_state.animation_fps)
-            st.metric("Duration", f"{len(frames_data)/st.session_state.animation_fps:.1f}s")
-    
-    def handle_video_export(self):
-        """Handle video export process."""
-        frames_data = st.session_state.frames_data
-        fps = st.session_state.animation_fps
-        
-        with st.spinner("Exporting video..."):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            def progress_callback(message):
-                if message.startswith("Rendering frame"):
-                    # Extract frame number
-                    parts = message.split()
-                    if len(parts) >= 3:
-                        try:
-                            current = int(parts[2].split('/')[0])
-                            total = int(parts[2].split('/')[1])
-                            progress = current / total
-                            progress_bar.progress(progress)
-                            status_text.text(message)
-                        except:
-                            status_text.text(message)
-                else:
-                    status_text.text(message)
-            
-            # Generate output filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"{st.session_state.animation_name}_export_{timestamp}.mp4"
-            output_path = self.data_write_dir / output_filename
-            
-            # Export video
-            exporter = VideoExporter()
-            success = exporter.export_frames_to_video(
-                frames_data,
-                str(output_path),
-                fps=fps,
-                quality='high',
-                progress_callback=progress_callback
-            )
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            if success:
-                st.success(f"✅ Video exported to: data/write/{output_filename}")
-                
-                # Provide download
-                with open(output_path, 'rb') as f:
-                    st.download_button(
-                        label="📥 Download MP4",
-                        data=f,
-                        file_name=output_filename,
-                        mime="video/mp4"
-                    )
-            else:
-                st.error("Failed to export video")
-        
-        st.session_state.export_requested = False
     
     def render_analysis_tab(self):
         """Render the Analysis tab for data merging and analysis."""

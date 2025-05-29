@@ -4,24 +4,24 @@
 **Context**: Immediate access to critical information for AI agents
 **Tags**: quick-reference, cheat-sheet, agent-guide
 **Related**: All memory components
-**Updated**: 2025-01-28T14:35:00Z (Experiment organization added)
+**Updated**: 2025-01-28T15:35:00Z (Removed preview/export for simplification)
 
 ## Current System Status (At-a-Glance)
 
 ### ✅ System Health
 - **Application**: Running on `localhost:8507`
-- **Status**: Enhanced with experiment organization
-- **Branch**: `animation` (experiment organization added)
-- **Latest Changes**: Added experiment/test selection, baseline test handling
-- **UI Layout**: Import (with experiment selection) → Animation → Analysis tabs
+- **Status**: Ultra-simplified UI, direct viewer launch
+- **Branch**: `animation` (preview/export removed)
+- **Latest Changes**: Removed animation preview and export buttons
+- **UI Layout**: Import → Animation → Analysis (minimal features)
 
 ### 🔧 Recent Accomplishments
-- Added hierarchical experiment organization
-- Implemented test selection with baseline priority
-- Added numerical sorting for experiments
-- Enhanced data organization for ML training
-- Maintained simplified 2-click workflow
-- Automatic baseline test detection
+- Removed animation preview functionality
+- Removed MP4 export button
+- Simplified codebase (~100 lines removed)
+- Direct launch to 3D viewer only
+- Cleaner imports and session state
+- Ultra-minimal interface
 
 ## Data Organization
 
@@ -68,26 +68,28 @@ data/read/
 streamlit run source/streamlit_interface.py --server.port 8507
 ```
 
-### Simplified Workflow (2 clicks!)
-1. **Import Tab**: Select experiment & test
-2. **Animation Tab**: Click "🎬 Create Facial Animation"
-3. **Auto-launch**: Interactive player opens automatically
+### Ultra-Simplified Workflow
+1. **Import Tab**: Select experiment
+2. **Animation Tab**: Select test → Create Animation
+3. **Result**: Direct launch to interactive 3D viewer
 
-### Key Session State Variables (Updated)
+### Key Session State Variables (Simplified)
 ```python
-st.session_state.csv_file_path      # Selected test file
-st.session_state.csv_data           # Loaded dataframe
-st.session_state.frames_data        # Animation frames
-st.session_state.animation_created  # Animation ready flag
-st.session_state.color_mode         # 'local_movement' or 'single'
+st.session_state.current_experiment  # Selected experiment path
+st.session_state.csv_file_path       # Selected test file
+st.session_state.csv_data            # Loaded dataframe
+st.session_state.frames_data         # Animation frames
+st.session_state.animation_created   # Animation ready flag
+st.session_state.color_mode          # 'local_movement' or 'single'
+st.session_state.baseline_frames     # Number of baseline frames
 ```
 
-### Fixed Parameters (No UI controls)
-```python
-z_scale = 25.0                      # Optimal for facial data
-filter = 'kabsch_alignment'         # Always enabled
-baseline_frame = 0                  # First frame reference
-```
+### Removed Features
+- ❌ Web-based animation preview
+- ❌ MP4 export functionality
+- ❌ Frame slider controls
+- ❌ Animation metrics display
+- ✅ Only interactive 3D viewer remains
 
 ## User Preferences (SIMPLIFIED)
 
@@ -202,7 +204,7 @@ launch_interactive_player(frames_data)
 
 ## Metadata
 - Created: 2025-01-24T18:15:00Z
-- Updated: 2025-01-28T14:35:00Z
+- Updated: 2025-01-28T15:15:00Z
 - Branch: dev
 - Confidence: High
 - Source: Complete refactoring implementation 
