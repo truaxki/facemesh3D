@@ -24,13 +24,17 @@ class StreamlitInterface:
     """Streamlined Streamlit interface for facial microexpression analysis."""
     
     def __init__(self):
+        """Initialize the Streamlit interface."""
+        self.setup_page_config()
+        self.setup_directories()
+        self.init_session_state()
+    
+    def setup_page_config(self):
         st.set_page_config(
             page_title="Facial Microexpression Analysis",
             page_icon="🎭",
             layout="wide"
         )
-        self.setup_session_state()
-        self.setup_directories()
     
     def setup_directories(self):
         """Ensure data directories exist."""
@@ -39,45 +43,23 @@ class StreamlitInterface:
         self.data_read_dir.mkdir(parents=True, exist_ok=True)
         self.data_write_dir.mkdir(parents=True, exist_ok=True)
     
-    def setup_session_state(self):
+    def init_session_state(self):
         """Initialize session state variables."""
-        # File handling
-        if 'csv_data' not in st.session_state:
-            st.session_state.csv_data = None
-        if 'csv_file_path' not in st.session_state:
-            st.session_state.csv_file_path = None
+        defaults = {
+            'csv_data': None,
+            'csv_file_path': None,
+            'baseline_mode': 'first_frame',  # Default to first frame mode
+            'statistical_baseline': None,
+            'baseline_csv_path': None,
+            'color_mode': 'local_movement',
+            'enable_scaling': True,
+            'current_animation': None,
+            'frames_data': None,  # Store animation frames for interactive player
+        }
         
-        # Baseline configuration
-        if 'baseline_mode' not in st.session_state:
-            st.session_state.baseline_mode = 'first_frame'  # 'first_frame' or 'custom_csv'
-        if 'baseline_csv_path' not in st.session_state:
-            st.session_state.baseline_csv_path = None
-        if 'statistical_baseline' not in st.session_state:
-            st.session_state.statistical_baseline = None
-            
-        # Animation settings
-        if 'color_mode' not in st.session_state:
-            st.session_state.color_mode = 'local_movement'
-        if 'z_scale' not in st.session_state:
-            st.session_state.z_scale = 25.0
-        if 'animation_fps' not in st.session_state:
-            st.session_state.animation_fps = 15
-        if 'enable_scaling' not in st.session_state:
-            st.session_state.enable_scaling = True  # Default to enabled for Kabsch-Umeyama
-            
-        # Animation state
-        if 'animation_created' not in st.session_state:
-            st.session_state.animation_created = False
-        if 'frames_data' not in st.session_state:
-            st.session_state.frames_data = None
-        if 'animation_name' not in st.session_state:
-            st.session_state.animation_name = None
-        if 'current_frame_idx' not in st.session_state:
-            st.session_state.current_frame_idx = 0
-            
-        # Export state
-        if 'export_requested' not in st.session_state:
-            st.session_state.export_requested = False
+        for key, default_value in defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = default_value
     
     def run(self):
         """Main application entry point."""
@@ -161,7 +143,7 @@ class StreamlitInterface:
                             try:
                                 statistical_baseline = DataFilters.create_statistical_baseline_from_csv(
                                     str(baseline_file_path),
-                                    z_scale=st.session_state.z_scale
+                                    z_scale=25.0
                                 )
                                 st.session_state.baseline_csv_path = baseline_file_path
                                 st.session_state.statistical_baseline = statistical_baseline
@@ -188,14 +170,14 @@ class StreamlitInterface:
                                 
                             except Exception as e:
                                 st.error(f"Error generating statistical baseline: {str(e)}")
-                    
-                    # Show current baseline status
-                    if st.session_state.statistical_baseline is not None:
-                        baseline_info = st.session_state.statistical_baseline
-                        st.success(f"✅ Statistical baseline ready from {baseline_info['num_frames']} frames")
-                        st.caption(f"Source: {Path(baseline_info['source_file']).name}")
-                    else:
-                        st.warning("⚠️ Click 'Generate Statistical Baseline' to create custom baseline")
+                
+                # Show current baseline status
+                if st.session_state.statistical_baseline is not None:
+                    baseline_info = st.session_state.statistical_baseline
+                    st.success(f"✅ Statistical baseline ready from {baseline_info['num_frames']} frames")
+                    st.caption(f"Source: {Path(baseline_info['source_file']).name}")
+                else:
+                    st.warning("⚠️ Click 'Generate Statistical Baseline' to create custom baseline")
             
             else:
                 # First frame mode - clear any custom baseline
@@ -240,56 +222,17 @@ class StreamlitInterface:
                 num_landmarks = len(coord_cols) // 3
                 st.metric("Facial Landmarks", num_landmarks)
             
-            # Preview data
+            # Preview data (expanded by default)
             with st.expander("Preview Data", expanded=True):
                 # Show first few rows
-                st.subheader("First 5 frames (sorted by time)")
+                st.subheader("First 5 frames")
                 preview_df = df.head()
+                st.dataframe(preview_df, use_container_width=True)
                 
-                # If Time (s) column exists, highlight it in preview
+                # Show time info if available
                 if 'Time (s)' in df.columns:
-                    # Create a styled dataframe that highlights the Time column
-                    st.dataframe(preview_df, use_container_width=True)
-                    
-                    # Show time range info
                     time_col = df['Time (s)']
-                    st.info(f"⏱️ Time range: {time_col.min():.3f}s to {time_col.max():.3f}s (Duration: {time_col.max() - time_col.min():.3f}s)")
-                else:
-                    st.dataframe(preview_df, use_container_width=True)
-                
-                # Show landmark statistics
-                if num_landmarks > 0:
-                    st.subheader("Landmark Statistics")
-                    
-                    # Get coordinate columns
-                    x_cols = [col for col in df.columns if col.startswith('feat_') and col.endswith('_x')]
-                    y_cols = [col for col in df.columns if col.startswith('feat_') and col.endswith('_y')]
-                    z_cols = [col for col in df.columns if col.startswith('feat_') and col.endswith('_z')]
-                    
-                    if x_cols and y_cols and z_cols:
-                        stats_data = {
-                            'Axis': ['X', 'Y', 'Z'],
-                            'Min': [
-                                df[x_cols].min().min(),
-                                df[y_cols].min().min(),
-                                df[z_cols].min().min()
-                            ],
-                            'Max': [
-                                df[x_cols].max().max(),
-                                df[y_cols].max().max(),
-                                df[z_cols].max().max()
-                            ],
-                            'Mean': [
-                                df[x_cols].mean().mean(),
-                                df[y_cols].mean().mean(),
-                                df[z_cols].mean().mean()
-                            ]
-                        }
-                        stats_df = pd.DataFrame(stats_data)
-                        st.dataframe(stats_df, use_container_width=True)
-            
-            # Auto-progress to Animation tab
-            st.info("✨ Data loaded successfully! Go to the **Animation** tab to create visualization.")
+                    st.caption(f"⏱️ Duration: {time_col.max() - time_col.min():.2f}s")
             
         except Exception as e:
             st.error(f"Error loading CSV: {str(e)}")
@@ -306,171 +249,148 @@ class StreamlitInterface:
         with st.sidebar:
             st.subheader("Animation Settings")
             
-            # Color mode selection with better name
+            # Color mode selection 
             color_mode_options = ["local_movement", "single"]
             color_mode_labels = {
-                "local_movement": "Local Movement (Microexpressions)",
+                "local_movement": "Movement Heatmap",
                 "single": "Single Color"
             }
             
-            # Add statistical deviation option if custom baseline is available
+            # Add statistical deviation option if statistical baseline is available
             if (st.session_state.baseline_mode == 'custom_csv' and 
                 st.session_state.statistical_baseline is not None):
                 color_mode_options.insert(1, "statistical_deviation")
-                color_mode_labels["statistical_deviation"] = "Statistical Deviation (Baseline Comparison)"
+                color_mode_labels["statistical_deviation"] = "Statistical Deviation"
             
             color_mode = st.selectbox(
                 "Color Mode",
                 color_mode_options,
-                format_func=lambda x: color_mode_labels[x],
-                help="Choose how to color the facial landmarks"
+                format_func=lambda x: color_mode_labels[x]
             )
             st.session_state.color_mode = color_mode
             
-            # Show color scheme explanation for statistical deviation mode
+            # Show color scheme explanation only if needed
             if color_mode == "statistical_deviation":
-                st.markdown("---")
-                st.subheader("🎨 Color Scheme")
-                st.markdown("""
-                **Statistical Deviation Colors:**
-                - 🔵 **Blue**: Within 1 standard deviation (normal)
-                - 🟡 **Yellow**: 1-3 standard deviations (elevated)
-                - 🔴 **Red**: Beyond 3 standard deviations (extreme)
-                
-                Each point is colored based on how far it deviates from its expected position in the baseline.
-                """)
+                st.caption("🔵 Normal • 🟡 Elevated • 🔴 Extreme")
             
             # Alignment settings
             st.markdown("---")
-            st.subheader("🔧 Alignment Settings")
+            st.subheader("Alignment")
             
             # Scaling option
             enable_scaling = st.checkbox(
-                "Enable Size Normalization",
+                "Size Normalization",
                 value=True,
-                help="Include scaling in Kabsch-Umeyama alignment to normalize size differences"
+                help="Remove size differences between subjects"
             )
             st.session_state.enable_scaling = enable_scaling
             
             if enable_scaling:
-                st.success("🔍 **Kabsch-Umeyama**: Rotation + Translation + Scaling")
-                st.caption("Removes size differences between subjects/sessions")
+                st.caption("✅ Kabsch-Umeyama (with scaling)")
             else:
-                st.info("🎯 **Kabsch Only**: Rotation + Translation")
-                st.caption("Preserves size differences (legacy behavior)")
+                st.caption("📌 Kabsch only (no scaling)")
             
-            # Hidden but set defaults
-            st.session_state.z_scale = 25.0  # Always use 25x
-            
-            # Show current baseline configuration
+            # Show baseline status
             st.markdown("---")
-            st.subheader("🎯 Baseline Configuration")
-            if st.session_state.baseline_mode == 'custom_csv' and st.session_state.statistical_baseline is not None:
-                st.success("📊 Custom Statistical Baseline")
-                baseline_info = st.session_state.statistical_baseline
-                st.caption(f"Source: {Path(baseline_info['source_file']).name}")
-                st.caption(f"Frames: {baseline_info['num_frames']}")
-                st.caption(f"Mean Std Dev: {baseline_info['statistics']['mean_std_dev']:.4f}")
+            st.subheader("Baseline")
+            if st.session_state.baseline_mode == 'custom_csv':
+                if st.session_state.statistical_baseline is not None:
+                    st.success("📊 Custom Statistical")
+                    baseline_info = st.session_state.statistical_baseline
+                    st.caption(f"{Path(baseline_info['source_file']).name}")
+                else:
+                    st.warning("⚠️ Generate Statistical Baseline First")
+                    st.caption("Go to Import tab")
             else:
-                st.info("🎯 First Frame Baseline")
-                st.caption("Using first frame of current data")
+                st.info("📌 First Frame")
+                st.caption("Using first frame of data")
             
             # Create animation button
-            if st.button("🎬 Create Facial Animation", type="primary", use_container_width=True):
+            st.markdown("---")
+            if st.button("🎬 Create Animation", type="primary", use_container_width=True):
                 self.create_animation()
         
         # Main area - animation display
-        if st.session_state.animation_created and st.session_state.frames_data:
+        if st.session_state.current_animation:
             self.render_animation_viewer()
         else:
-            st.info("Click '🎬 Create Facial Animation' in the sidebar to generate the animation.")
+            st.info("Click '🎬 Create Animation' in the sidebar to generate the animation.")
     
     def create_animation(self):
-        """Create animation from loaded CSV data."""
+        """Create animation with current settings."""
+        if st.session_state.csv_data is None:
+            st.error("No CSV data loaded")
+            return
+        
         try:
             with st.spinner("Creating animation..."):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                # Parse facial landmarks
+                # Parse facial landmarks from CSV
                 status_text.text("Parsing facial landmarks...")
                 df = st.session_state.csv_data
                 
-                # Get coordinate columns
-                x_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_x')])
-                y_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_y')])
-                z_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_z')])
+                # Convert color mode mapping
+                color_mode_map = {
+                    'local_movement': 'movement',
+                    'single': 'single',
+                    'statistical_deviation': 'single'  # Will be overridden later
+                }
                 
-                num_frames = len(df)
-                num_landmarks = len(x_cols)
+                file_color_mode = color_mode_map.get(st.session_state.color_mode, 'movement')
+                frames_data = FileManager._parse_facial_landmark_csv(df, file_color_mode, z_scale=25.0)
                 
-                frames_data = []
+                if not frames_data:
+                    st.error("No valid frames found in CSV data")
+                    return
                 
-                # First pass: collect all frames
-                status_text.text("Loading frames...")
-                for i in range(num_frames):
-                    progress_bar.progress((i + 1) / (num_frames * 2))  # First half of progress
-                    
-                    # Extract points for this frame
-                    points = np.zeros((num_landmarks, 3))
-                    for j in range(num_landmarks):
-                        points[j] = [
-                            df[x_cols[j]].iloc[i],
-                            df[y_cols[j]].iloc[i],
-                            df[z_cols[j]].iloc[i] * st.session_state.z_scale
-                        ]
-                    
-                    frames_data.append({
-                        'points': points,
-                        'colors': None  # Will be set based on color mode
-                    })
+                progress_bar.progress(0.3)
                 
                 # Apply Kabsch alignment
                 status_text.text("Applying Kabsch alignment to remove head motion...")
                 
-                # Get scaling setting
-                enable_scaling = st.session_state.get('enable_scaling', True)
-                alignment_method = "Kabsch-Umeyama" if enable_scaling else "Kabsch"
-                
-                # Choose alignment method based on baseline mode
-                if st.session_state.baseline_mode == 'custom_csv' and st.session_state.statistical_baseline is not None:
-                    # Use statistical baseline
-                    status_text.text(f"Applying {alignment_method} alignment with custom statistical baseline...")
-                    frames_data = DataFilters.align_frames_to_statistical_baseline(
-                        frames_data, 
-                        st.session_state.statistical_baseline,
-                        enable_scaling=enable_scaling
-                    )
-                    baseline_info = {
-                        'type': 'statistical',
-                        'source_file': Path(st.session_state.statistical_baseline['source_file']).name,
-                        'num_baseline_frames': st.session_state.statistical_baseline['num_frames'],
-                        'scaling_enabled': enable_scaling,
-                        'algorithm': alignment_method
-                    }
+                if st.session_state.baseline_mode == 'custom_csv':
+                    if st.session_state.statistical_baseline is not None:
+                        # Use statistical baseline
+                        frames_data = DataFilters.align_frames_to_statistical_baseline(
+                            frames_data, 
+                            st.session_state.statistical_baseline,
+                            enable_scaling=st.session_state.enable_scaling
+                        )
+                        baseline_info = {
+                            'type': 'statistical',
+                            'source': 'custom',
+                            'num_baseline_frames': st.session_state.statistical_baseline['num_frames'],
+                            'scaling_enabled': st.session_state.enable_scaling,
+                            'algorithm': 'Kabsch-Umeyama' if st.session_state.enable_scaling else 'Kabsch'
+                        }
+                    else:
+                        st.error("Statistical baseline not found")
+                        return
                 else:
-                    # Use first frame baseline (default)
-                    status_text.text(f"Applying {alignment_method} alignment with first frame baseline...")
+                    # Use first frame baseline
                     frames_data = DataFilters.align_frames_to_baseline(
                         frames_data, 
                         baseline_frame_idx=0,
-                        enable_scaling=enable_scaling
+                        enable_scaling=st.session_state.enable_scaling
                     )
                     baseline_info = {
                         'type': 'first_frame',
                         'baseline_frame_idx': 0,
-                        'scaling_enabled': enable_scaling,
-                        'algorithm': alignment_method
+                        'scaling_enabled': st.session_state.enable_scaling,
+                        'algorithm': 'Kabsch-Umeyama' if st.session_state.enable_scaling else 'Kabsch'
                     }
                 
+                progress_bar.progress(0.6)
+                
                 # Apply coloring based on mode
+                status_text.text("Applying color scheme...")
                 if st.session_state.color_mode == 'local_movement':
-                    status_text.text("Calculating local movement colors...")
                     frames_data = self.apply_local_movement_coloring(frames_data)
                 elif (st.session_state.color_mode == 'statistical_deviation' and 
                       st.session_state.baseline_mode == 'custom_csv' and 
                       st.session_state.statistical_baseline is not None):
-                    status_text.text("Calculating statistical deviation colors...")
                     frames_data = DataFilters.generate_statistical_deviation_colors(
                         frames_data, 
                         st.session_state.statistical_baseline
@@ -480,64 +400,47 @@ class StreamlitInterface:
                     for frame in frames_data:
                         frame['colors'] = np.tile([0.5, 0.7, 1.0], (len(frame['points']), 1))
                 
-                progress_bar.progress(1.0)
+                progress_bar.progress(0.8)
                 
-                # Generate animation name based on source file
+                # Generate animation name and save location
                 source_name = st.session_state.csv_file_path.stem
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-                animation_name = f"{source_name}_{num_frames}frames_{timestamp}"
+                animation_name = f"{source_name}_{len(frames_data)}frames_{timestamp}"
                 
-                # Save animation
                 save_path = self.data_write_dir / animation_name
                 save_path.mkdir(exist_ok=True)
                 
+                # Save animation frames
                 status_text.text("Saving animation frames...")
                 temp_dir, config_path, ply_paths = FileManager.save_animation_frames(frames_data, str(save_path))
                 
-                # Create metadata file
+                # Create enhanced metadata file
                 metadata = {
                     'source_file': st.session_state.csv_file_path.name,
                     'num_frames': len(frames_data),
                     'num_landmarks': len(frames_data[0]['points']),
                     'color_mode': st.session_state.color_mode,
-                    'z_scale': st.session_state.z_scale,
-                    'fps': st.session_state.animation_fps,
+                    'z_scale': 25.0,
                     'created_at': datetime.now().isoformat(),
-                    'kabsch_aligned': True,  # Always true in refactored version
-                    'baseline_info': baseline_info  # Include baseline information
+                    'baseline_info': baseline_info
                 }
                 
                 metadata_path = save_path / "metadata.json"
                 with open(metadata_path, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 
-                # Store in session state
-                st.session_state.frames_data = frames_data
-                st.session_state.animation_created = True
-                st.session_state.animation_name = animation_name
-                
+                progress_bar.progress(1.0)
                 status_text.empty()
-                progress_bar.empty()
                 
+                # Store animation data for viewer
+                st.session_state.current_animation = config_path
+                st.session_state.frames_data = frames_data  # Store frames for interactive player
                 st.success(f"✅ Animation created: {animation_name}")
                 
-                # Auto-launch interactive player
-                with st.spinner("Launching interactive animation player..."):
-                    time.sleep(0.5)  # Brief pause for UI update
-                    success, message = DesktopLauncher.launch_interactive_animation_player(
-                        frames_data, 
-                        st.session_state.animation_fps
-                    )
-                    if success:
-                        st.success("🎬 Interactive animation player launched!")
-                        st.info("Use keyboard controls in the 3D window: SPACE=play/pause, N/P=next/prev frame")
-                    else:
-                        st.error(f"Failed to launch player: {message}")
-                
         except Exception as e:
-            st.error(f"Error creating animation: {str(e)}")
+            st.error(f"Animation creation failed: {str(e)}")
             import traceback
-            st.error(traceback.format_exc())
+            st.error(f"Details: {traceback.format_exc()}")
     
     def apply_local_movement_coloring(self, frames_data):
         """Apply coloring based on frame-to-frame movement (microexpressions)."""
@@ -596,117 +499,104 @@ class StreamlitInterface:
         return frames_data
     
     def render_animation_viewer(self):
-        """Render the animation viewer interface."""
-        frames_data = st.session_state.frames_data
+        """Render the animation viewer section."""
+        if st.session_state.current_animation is None:
+            st.info("No animation created yet. Create one in the sidebar!")
+            return
         
-        col1, col2 = st.columns([3, 1])
+        if st.session_state.frames_data is None:
+            st.warning("Animation data not available in memory. Please recreate the animation.")
+            return
+        
+        animation_path = Path(st.session_state.current_animation)
+        if not animation_path.exists():
+            st.error("Animation file not found")
+            return
+        
+        st.success(f"🎬 Animation ready: {animation_path.name}")
+        st.info(f"📊 {len(st.session_state.frames_data)} frames loaded in memory")
+        
+        # Action buttons
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.subheader("Animation Preview")
-            
-            # Frame slider
-            frame_idx = st.slider(
-                f"Frame (1-{len(frames_data)})", 
-                0, len(frames_data)-1, 
-                st.session_state.current_frame_idx
-            )
-            st.session_state.current_frame_idx = frame_idx
-            
-            # Display current frame
-            frame_data = frames_data[frame_idx]
-            fig = PointCloudVisualizer.create_preview_plot(
-                frame_data['points'],
-                frame_data['colors'],
-                title_prefix=f"Frame {frame_idx + 1}/{len(frames_data)}"
-            )
-            st.pyplot(fig)
-            plt.close(fig)  # Clean up memory
+            if st.button("🎮 Launch 3D Player", use_container_width=True):
+                try:
+                    if st.session_state.frames_data is not None:
+                        # Use interactive animation player with stored frames data
+                        success, message = DesktopLauncher.launch_interactive_animation_player(
+                            st.session_state.frames_data, fps=15
+                        )
+                    else:
+                        success, message = False, "No animation data available"
+                    
+                    if success:
+                        st.success("✅ 3D player launched!")
+                        st.info("**Controls:** SPACE=play/pause • N/P=next/prev • C=toggle axes")
+                    else:
+                        st.error(f"Launch failed: {message}")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
         
         with col2:
-            st.subheader("Export")
-            
-            # Export to MP4
-            if st.button("📹 Export to MP4", use_container_width=True):
-                st.session_state.export_requested = True
-            
-            if st.session_state.export_requested:
-                self.handle_video_export()
-            
-            # Animation info
-            st.markdown("---")
-            st.metric("Total Frames", len(frames_data))
-            st.metric("FPS", st.session_state.animation_fps)
-            st.metric("Duration", f"{len(frames_data)/st.session_state.animation_fps:.1f}s")
+            if st.button("📊 View Metadata", use_container_width=True):
+                self.show_animation_metadata(animation_path)
+        
+        with col3:
+            if st.button("📁 Open Folder", use_container_width=True):
+                try:
+                    import subprocess
+                    subprocess.run(['explorer', str(animation_path.parent)], check=True)
+                    st.success("✅ Folder opened")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
     
-    def handle_video_export(self):
-        """Handle video export process."""
-        frames_data = st.session_state.frames_data
-        fps = st.session_state.animation_fps
-        
-        with st.spinner("Exporting video..."):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            def progress_callback(message):
-                if message.startswith("Rendering frame"):
-                    # Extract frame number
-                    parts = message.split()
-                    if len(parts) >= 3:
-                        try:
-                            current = int(parts[2].split('/')[0])
-                            total = int(parts[2].split('/')[1])
-                            progress = current / total
-                            progress_bar.progress(progress)
-                            status_text.text(message)
-                        except:
-                            status_text.text(message)
-                else:
-                    status_text.text(message)
-            
-            # Generate output filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"{st.session_state.animation_name}_export_{timestamp}.mp4"
-            output_path = self.data_write_dir / output_filename
-            
-            # Export video
-            exporter = VideoExporter()
-            success = exporter.export_frames_to_video(
-                frames_data,
-                str(output_path),
-                fps=fps,
-                quality='high',
-                progress_callback=progress_callback
-            )
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            if success:
-                st.success(f"✅ Video exported to: data/write/{output_filename}")
+    def show_animation_metadata(self, animation_path):
+        """Display animation metadata in an expandable section."""
+        metadata_file = animation_path.parent / "metadata.json"
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
                 
-                # Provide download
-                with open(output_path, 'rb') as f:
-                    st.download_button(
-                        label="📥 Download MP4",
-                        data=f,
-                        file_name=output_filename,
-                        mime="video/mp4"
-                    )
-            else:
-                st.error("Failed to export video")
-        
-        st.session_state.export_requested = False
+                with st.expander("📊 Animation Details", expanded=True):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric("Frames", metadata.get('num_frames', 'N/A'))
+                        st.metric("Landmarks", metadata.get('num_landmarks', 'N/A'))
+                        st.metric("Color Mode", metadata.get('color_mode', 'N/A'))
+                    
+                    with col2:
+                        st.metric("Source File", metadata.get('source_file', 'N/A'))
+                        baseline_info = metadata.get('baseline_info', {})
+                        if baseline_info:
+                            baseline_type = baseline_info.get('type', 'unknown')
+                            st.metric("Baseline", baseline_type.title())
+                            
+                            algorithm = baseline_info.get('algorithm', 'Unknown')
+                            st.metric("Algorithm", algorithm)
+            except Exception as e:
+                st.error(f"Error reading metadata: {str(e)}")
+        else:
+            st.warning("No metadata file found")
     
     def render_analysis_tab(self):
-        """Render the Analysis tab (placeholder for future features)."""
-        st.header("Feature Analysis")
-        st.info("🚧 Analysis features coming soon...")
+        """Render the Analysis tab for detailed data analysis."""
+        st.header("Facial Landmark Analysis")
+        
+        if st.session_state.csv_data is None:
+            st.warning("No data loaded. Please import CSV data first.")
+            return
+        
+        # Analysis content would go here
+        st.info("🚧 Analysis features coming soon!")
         st.markdown("""
-        This tab will include:
-        - Feature extraction for model training
-        - Movement pattern analysis
-        - Statistical summaries
-        - Export features to training datasets
+        **Planned Features:**
+        - Frame-by-frame movement analysis
+        - Statistical comparison tools  
+        - Expression pattern detection
+        - Export analysis reports
         """)
 
 
