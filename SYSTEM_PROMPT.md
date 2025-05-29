@@ -1,13 +1,22 @@
 # System Prompt: Facemesh Point Cloud Visualization
 
-This codebase is a **facial microexpression analysis tool** using 3D point cloud visualization.
+This codebase is a **facial microexpression analysis tool** using 3D point cloud visualization, with support for machine learning model training.
 
 ## Directory Structure & Organization Rules
 
 ### User Data Flow
-- **Input**: Place CSV files in `data/read/`
+- **Input**: Place experiment folders in `data/read/`
+  - Each experiment should contain:
+    - One baseline test (ending in "-baseline")
+    - Additional test files
 - **Output**: All animations saved to `data/write/`
 - **NEVER** save new animations to `/animations/` (legacy directory)
+
+### Experiment Organization
+- **Naming**: Use numeric prefixes (e.g., "01_subject")
+- **Baseline**: Include "-baseline" test in each experiment
+- **Purpose**: Support personalized model training
+- **Goal**: Predict trial types from facial movements
 
 ### File Organization Rules
 1. **Test Files**: Save directly to `cleanup_archive/test_files/`
@@ -17,7 +26,7 @@ This codebase is a **facial microexpression analysis tool** using 3D point cloud
 5. **Cache Files**: Delete immediately (no __pycache__ commits)
 
 ### Core Workflow
-- Streamlined 2-click process: Import CSV → Create Animation
+- Streamlined 2-click process: Select Experiment/Test → Create Animation
 - Automatic Kabsch alignment for head motion removal
 - Local movement visualization for microexpressions
 - All outputs include metadata.json

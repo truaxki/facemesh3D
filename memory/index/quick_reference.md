@@ -4,24 +4,43 @@
 **Context**: Immediate access to critical information for AI agents
 **Tags**: quick-reference, cheat-sheet, agent-guide
 **Related**: All memory components
-**Updated**: 2025-01-28T13:10:00Z (Dev branch refactoring)
+**Updated**: 2025-01-28T14:35:00Z (Experiment organization added)
 
 ## Current System Status (At-a-Glance)
 
 ### ✅ System Health
 - **Application**: Running on `localhost:8507`
-- **Status**: Refactored for microexpression analysis focus
-- **Branch**: `dev` (major UI simplification completed)
-- **Latest Changes**: Streamlined 3-tab interface, 52% code reduction
-- **UI Layout**: Import → Animation → Analysis tabs
+- **Status**: Enhanced with experiment organization
+- **Branch**: `animation` (experiment organization added)
+- **Latest Changes**: Added experiment/test selection, baseline test handling
+- **UI Layout**: Import (with experiment selection) → Animation → Analysis tabs
 
 ### 🔧 Recent Accomplishments
-- Refactored UI to focus on facial microexpression analysis
-- Reduced codebase by 52% (985 → 475 lines)
-- Created data/read/ and data/write/ directory structure
-- Fixed animation naming to use source filename
-- Auto-launch interactive player after animation creation
-- Renamed "post_filter_movement" to "local_movement"
+- Added hierarchical experiment organization
+- Implemented test selection with baseline priority
+- Added numerical sorting for experiments
+- Enhanced data organization for ML training
+- Maintained simplified 2-click workflow
+- Automatic baseline test detection
+
+## Data Organization
+
+### Experiment Structure
+- **Input Directory**: `data/read/`
+- **Organization**: Experiments → Tests
+- **Naming**: Use numeric prefixes (e.g., "01_subject")
+- **Baseline**: Append "-baseline" to baseline tests
+
+### Example Structure
+```
+data/read/
+├── 01_subject/
+│   ├── test1-baseline.csv
+│   └── test2.csv
+└── 02_subject/
+    ├── baseline.csv
+    └── trial1.csv
+```
 
 ## Critical File Locations
 
@@ -46,20 +65,17 @@
 ### Application Startup
 ```bash
 # Standard launch
-python main.py
-
-# Or direct streamlit
 streamlit run source/streamlit_interface.py --server.port 8507
 ```
 
 ### Simplified Workflow (2 clicks!)
-1. **Import Tab**: Select CSV from data/read/
+1. **Import Tab**: Select experiment & test
 2. **Animation Tab**: Click "🎬 Create Facial Animation"
 3. **Auto-launch**: Interactive player opens automatically
 
-### Key Session State Variables (Simplified)
+### Key Session State Variables (Updated)
 ```python
-st.session_state.csv_file_path      # Selected CSV file
+st.session_state.csv_file_path      # Selected test file
 st.session_state.csv_data           # Loaded dataframe
 st.session_state.frames_data        # Animation frames
 st.session_state.animation_created  # Animation ready flag
@@ -186,7 +202,7 @@ launch_interactive_player(frames_data)
 
 ## Metadata
 - Created: 2025-01-24T18:15:00Z
-- Updated: 2025-01-28T13:10:00Z
+- Updated: 2025-01-28T14:35:00Z
 - Branch: dev
 - Confidence: High
 - Source: Complete refactoring implementation 

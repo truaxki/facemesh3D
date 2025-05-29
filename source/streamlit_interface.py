@@ -82,7 +82,9 @@ class StreamlitInterface:
         # Experiment (folder) picker
         experiment_dirs = [d for d in self.data_read_dir.glob("*") if d.is_dir()]
         if experiment_dirs:
-            folder_names = ["Select an experiment..."] + [f.name for f in experiment_dirs]
+            # Sort experiment folders numerically if possible
+            folder_names = ["Select an experiment..."] + sorted([f.name for f in experiment_dirs], 
+                key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
             selected_experiment = st.selectbox(
                 "Select experiment from data/read/",
                 folder_names,
@@ -94,8 +96,30 @@ class StreamlitInterface:
                 csv_files = list(experiment_path.glob("*.csv"))
                 
                 if csv_files:
-                    # Use the first CSV file in the folder
-                    file_path = csv_files[0]
+                    # Sort CSV files and find baseline
+                    csv_files = sorted(csv_files, key=lambda x: x.stem)
+                    baseline_file = next((f for f in csv_files if f.stem.endswith("-baseline")), None)
+                    
+                    # Create list of tests with baseline first if it exists
+                    test_options = []
+                    if baseline_file:
+                        test_options.append(baseline_file.stem)
+                        other_tests = [f.stem for f in csv_files if f != baseline_file]
+                        test_options.extend(sorted(other_tests))
+                    else:
+                        test_options = [f.stem for f in csv_files]
+                    
+                    # Test selection dropdown
+                    selected_test = st.selectbox(
+                        "Test Selection",
+                        test_options,
+                        index=0 if baseline_file else 0,
+                        help="Select the test to analyze. Baseline test is recommended for initial analysis."
+                    )
+                    
+                    # Get the selected file path
+                    file_path = next(f for f in csv_files if f.stem == selected_test)
+                    
                     if file_path != st.session_state.csv_file_path:
                         st.session_state.csv_file_path = file_path
                         st.session_state.csv_data = None
@@ -103,7 +127,7 @@ class StreamlitInterface:
                         st.session_state.animation_created = False
                         
                         # Show info about the experiment
-                        st.info(f"📊 Found {len(csv_files)} CSV files in experiment. Currently using: {file_path.name}")
+                        st.info(f"📊 Found {len(csv_files)} tests in experiment. Currently using: {file_path.name}")
                     
                     # Load and preview
                     self.load_and_preview_csv(file_path)
@@ -519,15 +543,98 @@ class StreamlitInterface:
         st.session_state.export_requested = False
     
     def render_analysis_tab(self):
-        """Render the Analysis tab (placeholder for future features)."""
-        st.header("Feature Analysis")
-        st.info("🚧 Analysis features coming soon...")
+        """Render the Analysis tab for data merging and analysis."""
+        st.header("Analysis")
+        
+        # Create tabs within Analysis
+        analysis_tabs = st.tabs(["Merge and Import", "Feature Analysis", "Model Training"])
+        
+        with analysis_tabs[0]:
+            self.render_merge_and_import()
+        with analysis_tabs[1]:
+            self.render_feature_analysis()
+        with analysis_tabs[2]:
+            self.render_model_training()
+    
+    def render_merge_and_import(self):
+        """Render the merge and import interface with side-by-side folder views."""
+        st.subheader("Merge and Import")
+        
+        # Get the currently selected experiment path from session state
+        current_experiment = None
+        if st.session_state.csv_file_path:
+            current_experiment = Path(st.session_state.csv_file_path).parent
+        
+        # Create side-by-side columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### READ")
+            if current_experiment:
+                st.caption(f"📂 {current_experiment}")
+                
+                # List contents of read directory
+                try:
+                    files = sorted(current_experiment.glob("*.csv"))
+                    if files:
+                        st.markdown("#### CSV Files:")
+                        for file in files:
+                            st.text(f"📄 {file.name}")
+                    else:
+                        st.info("No CSV files found in directory")
+                except Exception as e:
+                    st.error(f"Error reading directory: {str(e)}")
+            else:
+                st.info("Please select an experiment in the Import tab first")
+        
+        with col2:
+            st.markdown("### WRITE")
+            if current_experiment:
+                # Create matching write directory path
+                write_dir = self.data_write_dir / current_experiment.name
+                st.caption(f"📂 {write_dir}")
+                
+                # Create directory if it doesn't exist
+                write_dir.mkdir(parents=True, exist_ok=True)
+                
+                # List contents of write directory
+                try:
+                    # Look for processed files (animations, videos, etc.)
+                    processed_files = []
+                    processed_files.extend(write_dir.glob("*.mp4"))  # Videos
+                    processed_files.extend(write_dir.glob("*.ply"))  # Point clouds
+                    processed_files.extend(write_dir.glob("*.json")) # Metadata
+                    
+                    if processed_files:
+                        st.markdown("#### Processed Files:")
+                        for file in sorted(processed_files):
+                            icon = "🎥" if file.suffix == ".mp4" else "📄"
+                            st.text(f"{icon} {file.name}")
+                    else:
+                        st.info("No processed files yet")
+                except Exception as e:
+                    st.error(f"Error reading directory: {str(e)}")
+            else:
+                st.info("Waiting for experiment selection...")
+    
+    def render_feature_analysis(self):
+        """Render the feature analysis interface (placeholder)."""
+        st.info("🚧 Feature analysis coming soon...")
         st.markdown("""
-        This tab will include:
-        - Feature extraction for model training
+        Planned features:
         - Movement pattern analysis
         - Statistical summaries
-        - Export features to training datasets
+        - Feature extraction
+        """)
+    
+    def render_model_training(self):
+        """Render the model training interface (placeholder)."""
+        st.info("🚧 Model training coming soon...")
+        st.markdown("""
+        Planned features:
+        - Trial type prediction
+        - Cross-validation
+        - Model evaluation
         """)
 
 
