@@ -79,29 +79,39 @@ class StreamlitInterface:
         """Render the Import tab for CSV file selection and preview."""
         st.header("Import Facial Landmark Data")
         
-        # File picker
-        csv_files = list(self.data_read_dir.glob("*.csv"))
-        if csv_files:
-            file_names = ["Select a file..."] + [f.name for f in csv_files]
-            selected_file = st.selectbox(
-                "Select CSV file from data/read/",
-                file_names,
-                help="Place your facial landmark CSV files in the data/read/ directory"
+        # Experiment (folder) picker
+        experiment_dirs = [d for d in self.data_read_dir.glob("*") if d.is_dir()]
+        if experiment_dirs:
+            folder_names = ["Select an experiment..."] + [f.name for f in experiment_dirs]
+            selected_experiment = st.selectbox(
+                "Select experiment from data/read/",
+                folder_names,
+                help="Place your experiment folders containing facial landmark CSV files in the data/read/ directory"
             )
             
-            if selected_file != "Select a file...":
-                file_path = self.data_read_dir / selected_file
-                if file_path != st.session_state.csv_file_path:
-                    st.session_state.csv_file_path = file_path
-                    st.session_state.csv_data = None
-                    st.session_state.frames_data = None
-                    st.session_state.animation_created = False
+            if selected_experiment != "Select an experiment...":
+                experiment_path = self.data_read_dir / selected_experiment
+                csv_files = list(experiment_path.glob("*.csv"))
                 
-                # Load and preview
-                self.load_and_preview_csv(file_path)
+                if csv_files:
+                    # Use the first CSV file in the folder
+                    file_path = csv_files[0]
+                    if file_path != st.session_state.csv_file_path:
+                        st.session_state.csv_file_path = file_path
+                        st.session_state.csv_data = None
+                        st.session_state.frames_data = None
+                        st.session_state.animation_created = False
+                        
+                        # Show info about the experiment
+                        st.info(f"📊 Found {len(csv_files)} CSV files in experiment. Currently using: {file_path.name}")
+                    
+                    # Load and preview
+                    self.load_and_preview_csv(file_path)
+                else:
+                    st.warning(f"No CSV files found in experiment folder: {selected_experiment}")
         else:
-            st.warning("No CSV files found in data/read/ directory. Please add your facial landmark CSV files there.")
-            st.info("Expected format: feat_0_x, feat_0_y, feat_0_z, ... for 478 facial landmarks")
+            st.warning("No experiment folders found in data/read/ directory. Please add your experiment folders containing facial landmark CSV files.")
+            st.info("Expected folder structure: data/read/experiment_name/*.csv\nExpected CSV format: feat_0_x, feat_0_y, feat_0_z, ... for 478 facial landmarks")
     
     def load_and_preview_csv(self, file_path):
         """Load and preview the selected CSV file."""
