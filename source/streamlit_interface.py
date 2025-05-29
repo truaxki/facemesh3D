@@ -93,46 +93,9 @@ class StreamlitInterface:
             
             if selected_experiment != "Select an experiment...":
                 experiment_path = self.data_read_dir / selected_experiment
-                csv_files = list(experiment_path.glob("*.csv"))
-                
-                if csv_files:
-                    # Sort CSV files and find baseline
-                    csv_files = sorted(csv_files, key=lambda x: x.stem)
-                    baseline_file = next((f for f in csv_files if f.stem.endswith("-baseline")), None)
-                    
-                    # Create list of tests with baseline first if it exists
-                    test_options = []
-                    if baseline_file:
-                        test_options.append(baseline_file.stem)
-                        other_tests = [f.stem for f in csv_files if f != baseline_file]
-                        test_options.extend(sorted(other_tests))
-                    else:
-                        test_options = [f.stem for f in csv_files]
-                    
-                    # Test selection dropdown
-                    selected_test = st.selectbox(
-                        "Test Selection",
-                        test_options,
-                        index=0 if baseline_file else 0,
-                        help="Select the test to analyze. Baseline test is recommended for initial analysis."
-                    )
-                    
-                    # Get the selected file path
-                    file_path = next(f for f in csv_files if f.stem == selected_test)
-                    
-                    if file_path != st.session_state.csv_file_path:
-                        st.session_state.csv_file_path = file_path
-                        st.session_state.csv_data = None
-                        st.session_state.frames_data = None
-                        st.session_state.animation_created = False
-                        
-                        # Show info about the experiment
-                        st.info(f"📊 Found {len(csv_files)} tests in experiment. Currently using: {file_path.name}")
-                    
-                    # Load and preview
-                    self.load_and_preview_csv(file_path)
-                else:
-                    st.warning(f"No CSV files found in experiment folder: {selected_experiment}")
+                st.session_state.current_experiment = experiment_path
+                st.success(f"✅ Selected experiment: {selected_experiment}")
+                st.info("Go to the Animation tab to select a test and create visualization.")
         else:
             st.warning("No experiment folders found in data/read/ directory. Please add your experiment folders containing facial landmark CSV files.")
             st.info("Expected folder structure: data/read/experiment_name/*.csv\nExpected CSV format: feat_0_x, feat_0_y, feat_0_z, ... for 478 facial landmarks")
@@ -226,9 +189,46 @@ class StreamlitInterface:
         """Render the Animation tab for creating and viewing animations."""
         st.header("Create Animation")
         
-        if st.session_state.csv_data is None:
-            st.warning("Please import a CSV file in the Import tab first.")
+        if not hasattr(st.session_state, 'current_experiment'):
+            st.warning("Please select an experiment in the Import tab first.")
             return
+            
+        experiment_path = st.session_state.current_experiment
+        csv_files = list(experiment_path.glob("*.csv"))
+        
+        if csv_files:
+            # Sort CSV files and find baseline
+            csv_files = sorted(csv_files, key=lambda x: x.stem)
+            baseline_file = next((f for f in csv_files if f.stem.endswith("-baseline")), None)
+            
+            # Create list of tests with baseline first if it exists
+            test_options = []
+            if baseline_file:
+                test_options.append(baseline_file.stem)
+                other_tests = [f.stem for f in csv_files if f != baseline_file]
+                test_options.extend(sorted(other_tests))
+            else:
+                test_options = [f.stem for f in csv_files]
+            
+            # Test selection dropdown
+            selected_test = st.selectbox(
+                "Test Selection",
+                test_options,
+                index=0 if baseline_file else 0,
+                help="Select the test to analyze. Baseline test is recommended for initial analysis."
+            )
+            
+            # Get the selected file path
+            file_path = next(f for f in csv_files if f.stem == selected_test)
+            
+            if file_path != st.session_state.csv_file_path:
+                st.session_state.csv_file_path = file_path
+                st.session_state.csv_data = None
+                st.session_state.frames_data = None
+                st.session_state.animation_created = False
+                
+                # Load and preview
+                self.load_and_preview_csv(file_path)
         
         # Animation controls in sidebar
         with st.sidebar:
@@ -267,7 +267,7 @@ class StreamlitInterface:
         if st.session_state.animation_created and st.session_state.frames_data:
             self.render_animation_viewer()
         else:
-            st.info("Click '🎬 Create Facial Animation' in the sidebar to generate the animation.")
+            st.info("Select a test above and click '🎬 Create Facial Animation' in the sidebar to generate the animation.")
     
     def create_animation(self):
         """Create animation from loaded CSV data."""
@@ -561,9 +561,7 @@ class StreamlitInterface:
         st.subheader("Merge and Import")
         
         # Get the currently selected experiment path from session state
-        current_experiment = None
-        if st.session_state.csv_file_path:
-            current_experiment = Path(st.session_state.csv_file_path).parent
+        current_experiment = getattr(st.session_state, 'current_experiment', None)
         
         # Create side-by-side columns
         col1, col2 = st.columns(2)
@@ -573,13 +571,18 @@ class StreamlitInterface:
             if current_experiment:
                 st.caption(f"📂 {current_experiment}")
                 
-                # List contents of read directory
+                # List contents of read directory with selection
                 try:
                     files = sorted(current_experiment.glob("*.csv"))
                     if files:
                         st.markdown("#### CSV Files:")
+                        selected_files = []
                         for file in files:
-                            st.text(f"📄 {file.name}")
+                            if st.checkbox(f"📄 {file.name}", key=f"read_{file.name}"):
+                                selected_files.append(file)
+                        
+                        if selected_files:
+                            st.session_state.selected_read_files = selected_files
                     else:
                         st.info("No CSV files found in directory")
                 except Exception as e:
@@ -597,7 +600,7 @@ class StreamlitInterface:
                 # Create directory if it doesn't exist
                 write_dir.mkdir(parents=True, exist_ok=True)
                 
-                # List contents of write directory
+                # List contents of write directory with selection
                 try:
                     # Look for processed files (animations, videos, etc.)
                     processed_files = []
@@ -607,15 +610,47 @@ class StreamlitInterface:
                     
                     if processed_files:
                         st.markdown("#### Processed Files:")
+                        selected_files = []
                         for file in sorted(processed_files):
                             icon = "🎥" if file.suffix == ".mp4" else "📄"
-                            st.text(f"{icon} {file.name}")
+                            if st.checkbox(f"{icon} {file.name}", key=f"write_{file.name}"):
+                                selected_files.append(file)
+                        
+                        if selected_files:
+                            st.session_state.selected_write_files = selected_files
                     else:
                         st.info("No processed files yet")
                 except Exception as e:
                     st.error(f"Error reading directory: {str(e)}")
             else:
                 st.info("Waiting for experiment selection...")
+        
+        # Show data preview for selected files
+        if hasattr(st.session_state, 'selected_read_files') and st.session_state.selected_read_files:
+            with st.expander("Preview Selected Data", expanded=True):
+                for file in st.session_state.selected_read_files:
+                    st.markdown(f"#### {file.name}")
+                    try:
+                        df = pd.read_csv(file)
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Rows (Frames)", len(df))
+                        with col2:
+                            st.metric("Columns", len(df.columns))
+                        with col3:
+                            coord_cols = [col for col in df.columns if col.startswith('feat_') and col.endswith(('_x', '_y', '_z'))]
+                            num_landmarks = len(coord_cols) // 3
+                            st.metric("Facial Landmarks", num_landmarks)
+                        
+                        # Show first few rows
+                        st.dataframe(df.head(), use_container_width=True)
+                        
+                        # Show time range if available
+                        if 'Time (s)' in df.columns:
+                            time_col = df['Time (s)']
+                            st.info(f"⏱️ Time range: {time_col.min():.3f}s to {time_col.max():.3f}s (Duration: {time_col.max() - time_col.min():.3f}s)")
+                    except Exception as e:
+                        st.error(f"Error loading {file.name}: {str(e)}")
     
     def render_feature_analysis(self):
         """Render the feature analysis interface (placeholder)."""
