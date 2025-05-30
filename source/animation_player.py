@@ -363,4 +363,199 @@ def play_animation_interactive(frames_data: List[Dict[str, Any]], fps: int = 15)
         return True
     except Exception as e:
         print(f"❌ Animation player error: {e}")
+        return False
+
+
+class ComparisonAnimationPlayer(InteractiveAnimationPlayer):
+    """Side-by-side comparison animation player for original vs transformed point clouds."""
+    
+    def __init__(self, original_frames: List[Dict[str, Any]], transformed_frames: List[Dict[str, Any]], 
+                 fps: int = 15, comparison_label: str = "Original vs Transformed"):
+        """Initialize comparison animation player.
+        
+        Args:
+            original_frames: List of original frame dictionaries
+            transformed_frames: List of transformed frame dictionaries
+            fps: Frames per second for playback
+            comparison_label: Label for the comparison (e.g., "Original vs Kabsch-aligned")
+        """
+        # Store both sets of frames
+        self.original_frames = original_frames
+        self.transformed_frames = transformed_frames
+        self.comparison_label = comparison_label
+        
+        # Initialize parent with transformed frames (for compatibility)
+        super().__init__(transformed_frames, fps)
+        
+        # Additional state for comparison
+        self.point_cloud_original = None
+        self.point_cloud_transformed = None
+        self.separation_distance = 0.0  # Will be calculated based on bounding box
+        
+        # Text labels
+        self.text_original = None
+        self.text_transformed = None
+    
+    def calculate_separation_distance(self):
+        """Calculate appropriate separation distance based on point cloud size."""
+        if self.original_frames:
+            # Get bounding box of first frame
+            points = self.original_frames[0]['points']
+            min_bounds = np.min(points, axis=0)
+            max_bounds = np.max(points, axis=0)
+            bbox_diagonal = np.linalg.norm(max_bounds - min_bounds)
+            
+            # Set separation to 0.75x the bounding box diagonal (reduced from 1.5x)
+            self.separation_distance = bbox_diagonal * 0.75
+            
+            print(f"📏 Separation distance: {self.separation_distance:.2f}")
+    
+    def setup_visualizer(self):
+        """Setup Open3D visualizer with side-by-side point clouds."""
+        # Use VisualizerWithKeyCallback for in-window controls
+        self.vis = o3d.visualization.VisualizerWithKeyCallback()
+        window_title = f"🎬 Comparison: {self.comparison_label} - {len(self.original_frames)} frames"
+        self.vis.create_window(window_name=window_title, width=1600, height=900)
+        
+        # Configure rendering
+        render_opt = self.vis.get_render_option()
+        render_opt.background_color = np.array([0.05, 0.05, 0.2])
+        render_opt.point_size = 2.5
+        render_opt.show_coordinate_frame = False  # Hide coordinate frame for cleaner view
+        render_opt.light_on = True
+        
+        # Calculate separation distance
+        self.calculate_separation_distance()
+        
+        # Create point clouds for both original and transformed
+        if self.original_frames and self.transformed_frames:
+            # Original point cloud (left side)
+            frame_data = self.original_frames[0]
+            self.point_cloud_original = o3d.geometry.PointCloud()
+            
+            # Shift original to the left
+            shifted_points = frame_data['points'] - np.array([self.separation_distance/2, 0, 0])
+            self.point_cloud_original.points = o3d.utility.Vector3dVector(shifted_points)
+            
+            if frame_data['colors'] is not None:
+                self.point_cloud_original.colors = o3d.utility.Vector3dVector(frame_data['colors'])
+            else:
+                # Default color for original (light blue)
+                colors = np.ones((len(frame_data['points']), 3)) * [0.5, 0.7, 1.0]
+                self.point_cloud_original.colors = o3d.utility.Vector3dVector(colors)
+            
+            self.point_cloud_original.estimate_normals()
+            
+            # Transformed point cloud (right side)
+            frame_data = self.transformed_frames[0]
+            self.point_cloud_transformed = o3d.geometry.PointCloud()
+            
+            # Shift transformed to the right
+            shifted_points = frame_data['points'] + np.array([self.separation_distance/2, 0, 0])
+            self.point_cloud_transformed.points = o3d.utility.Vector3dVector(shifted_points)
+            
+            if frame_data['colors'] is not None:
+                self.point_cloud_transformed.colors = o3d.utility.Vector3dVector(frame_data['colors'])
+            
+            self.point_cloud_transformed.estimate_normals()
+            
+            # Add both to visualizer
+            self.vis.add_geometry(self.point_cloud_original)
+            self.vis.add_geometry(self.point_cloud_transformed)
+            
+            # Add text labels (if Open3D version supports it)
+            try:
+                # Create coordinate frames as labels
+                coord_frame_original = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=self.separation_distance * 0.1, 
+                    origin=[-self.separation_distance/2, -self.separation_distance*0.4, 0]
+                )
+                coord_frame_transformed = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=self.separation_distance * 0.1,
+                    origin=[self.separation_distance/2, -self.separation_distance*0.4, 0]
+                )
+                self.vis.add_geometry(coord_frame_original)
+                self.vis.add_geometry(coord_frame_transformed)
+            except:
+                pass  # Ignore if coordinate frames fail
+        
+        # Register key callbacks
+        self.register_key_callbacks()
+        
+        # Add comparison-specific controls
+        self.vis.register_key_callback(ord("C"), self.on_key_center_view)  # C - center view
+        
+        # Reset view to show both
+        self.vis.reset_view_point(True)
+        
+        return window_title
+    
+    def update_to_frame(self, frame_index: int):
+        """Update both point clouds to specific frame."""
+        if 0 <= frame_index < len(self.original_frames):
+            self.current_frame = frame_index
+            
+            # Update original point cloud
+            frame_data = self.original_frames[frame_index]
+            shifted_points = frame_data['points'] - np.array([self.separation_distance/2, 0, 0])
+            self.point_cloud_original.points = o3d.utility.Vector3dVector(shifted_points)
+            
+            if frame_data['colors'] is not None:
+                self.point_cloud_original.colors = o3d.utility.Vector3dVector(frame_data['colors'])
+            else:
+                # Keep default color
+                colors = np.ones((len(frame_data['points']), 3)) * [0.5, 0.7, 1.0]
+                self.point_cloud_original.colors = o3d.utility.Vector3dVector(colors)
+            
+            self.point_cloud_original.estimate_normals()
+            
+            # Update transformed point cloud
+            frame_data = self.transformed_frames[frame_index]
+            shifted_points = frame_data['points'] + np.array([self.separation_distance/2, 0, 0])
+            self.point_cloud_transformed.points = o3d.utility.Vector3dVector(shifted_points)
+            
+            if frame_data['colors'] is not None:
+                self.point_cloud_transformed.colors = o3d.utility.Vector3dVector(frame_data['colors'])
+            
+            self.point_cloud_transformed.estimate_normals()
+            
+            # Update visualization
+            try:
+                self.vis.update_geometry(self.point_cloud_original)
+                self.vis.update_geometry(self.point_cloud_transformed)
+                self.vis.update_renderer()
+            except:
+                # Fallback method
+                self.vis.clear_geometries()
+                self.vis.add_geometry(self.point_cloud_original)
+                self.vis.add_geometry(self.point_cloud_transformed)
+                self.vis.update_renderer()
+    
+    def on_key_center_view(self, vis):
+        """Center the view to show both point clouds."""
+        self.vis.reset_view_point(True)
+        print("🎯 View centered on both point clouds")
+        return False
+    
+    def print_controls(self):
+        """Print control instructions with comparison-specific additions."""
+        super().print_controls()
+        print("\n⚡ Comparison-Specific Controls:")
+        print("   C              : 🎯 Center view on both")
+        print(f"\n📊 Comparison: {self.comparison_label}")
+        print(f"   Left side: Original")
+        print(f"   Right side: Transformed")
+
+
+def play_comparison_animation(original_frames: List[Dict[str, Any]], 
+                            transformed_frames: List[Dict[str, Any]], 
+                            fps: int = 15,
+                            comparison_label: str = "Original vs Transformed") -> bool:
+    """Launch side-by-side comparison animation player."""
+    try:
+        player = ComparisonAnimationPlayer(original_frames, transformed_frames, fps, comparison_label)
+        player.play_animation()
+        return True
+    except Exception as e:
+        print(f"❌ Comparison animation player error: {e}")
         return False 

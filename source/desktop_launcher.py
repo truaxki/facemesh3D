@@ -9,7 +9,7 @@ import os
 import subprocess
 from pathlib import Path
 from file_manager import FileManager
-from animation_player import play_animation_interactive
+from animation_player import play_animation_interactive, play_comparison_animation
 
 
 class DesktopLauncher:
@@ -94,6 +94,37 @@ class DesktopLauncher:
                 
         except Exception as e:
             return False, f"Failed to launch interactive animation player: {str(e)}"
+    
+    @staticmethod
+    def launch_comparison_animation_player(original_frames, transformed_frames, fps=15, 
+                                         comparison_label="Original vs Transformed"):
+        """Launch side-by-side comparison animation player.
+        
+        Shows original and transformed point clouds side by side in the same window
+        for easy visual comparison of the effects of filters and transformations.
+        
+        Args:
+            original_frames: List of original frame dictionaries
+            transformed_frames: List of transformed frame dictionaries  
+            fps: Frames per second for playback
+            comparison_label: Description of the comparison
+        """
+        try:
+            print(f"🎬 Launching Comparison Animation Player...")
+            print(f"   📊 {len(original_frames)} frames at {fps} FPS")
+            print(f"   🔍 Comparison: {comparison_label}")
+            print(f"   ⏱️ Duration: {len(original_frames)/fps:.1f} seconds")
+            
+            # Launch the comparison player
+            success = play_comparison_animation(original_frames, transformed_frames, fps, comparison_label)
+            
+            if success:
+                return True, f"Comparison animation player completed"
+            else:
+                return False, "Comparison animation player failed to start"
+                
+        except Exception as e:
+            return False, f"Failed to launch comparison animation player: {str(e)}"
     
     @staticmethod
     def get_launch_info():

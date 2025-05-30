@@ -46,12 +46,15 @@ class StreamlitInterface:
             'frames_data': None,
             'animation_created': False,
             'z_scale': 25.0,
-            'color_mode': 'point_cloud_continuous',  # Updated default
+            'color_mode': 'point_cloud_sd',  # Changed to standard deviation as default
             'baseline_frames': 30,
             'animation_fps': 15,
             'head_movement_compensation': 'kabsch',  # Default setting
             'rolling_average_smoothing': 'off',  # New setting
-            'smoothing_window': 3  # New setting
+            'smoothing_window': 3,  # New setting
+            'comprehensive_analysis_done': False,  # Track analysis completion
+            'show_advanced_settings': False,  # Toggle for advanced settings
+            'show_cluster_analysis': False  # Toggle for cluster analysis
         }
         
         for key, value in defaults.items():
@@ -61,6 +64,44 @@ class StreamlitInterface:
     def run(self):
         """Main application entry point."""
         st.title("🎭 Facial Microexpression Analysis")
+        
+        # Sidebar for status notifications
+        with st.sidebar:
+            st.markdown("### 📊 Status")
+            
+            # Show current experiment info
+            if hasattr(st.session_state, 'current_experiment'):
+                st.success(f"📂 Experiment: {st.session_state.current_experiment.name}")
+                
+                # Show current file if loaded
+                if hasattr(st.session_state, 'csv_file_path') and st.session_state.csv_file_path:
+                    st.info(f"📄 File: {st.session_state.csv_file_path.stem}")
+                    
+                    if st.session_state.csv_data is not None:
+                        st.caption(f"🎬 {len(st.session_state.csv_data)} frames, {len([c for c in st.session_state.csv_data.columns if c.startswith('feat_') and c.endswith('_x')])} landmarks")
+                
+                # Show analysis status
+                if hasattr(st.session_state, 'comprehensive_analysis_done') and st.session_state.comprehensive_analysis_done:
+                    st.success("✅ Filter analysis complete")
+                
+                # Show animation status
+                if hasattr(st.session_state, 'animation_created') and st.session_state.animation_created:
+                    st.success("🎬 Animation created")
+                    if hasattr(st.session_state, 'animation_name'):
+                        st.caption(f"📁 {st.session_state.animation_name}")
+            else:
+                st.warning("⚠️ No experiment selected")
+            
+            st.markdown("---")
+            
+            # Quick settings display
+            if hasattr(st.session_state, 'head_movement_compensation'):
+                st.markdown("### ⚙️ Current Settings")
+                st.caption(f"🔧 Filter: {st.session_state.head_movement_compensation.title()}")
+                st.caption(f"🌊 Smoothing: {st.session_state.rolling_average_smoothing.title()}")
+                if st.session_state.rolling_average_smoothing != "off":
+                    st.caption(f"🪟 Window: {st.session_state.smoothing_window}")
+                st.caption(f"🎨 Color: {st.session_state.color_mode.replace('_', ' ').title()}")
         
         # Determine which tab should be active based on state
         if hasattr(st.session_state, 'current_experiment') and st.session_state.current_experiment:
@@ -99,7 +140,6 @@ class StreamlitInterface:
             if selected_experiment != "Select an experiment...":
                 experiment_path = self.data_read_dir / selected_experiment
                 st.session_state.current_experiment = experiment_path
-                st.success(f"✅ Selected experiment: {selected_experiment}\n\nGo to the Animation tab to select a test and create visualization.")
         else:
             st.warning("No experiment folders found in data/read/ directory. Please add your experiment folders containing facial landmark CSV files.")
             st.info("Expected folder structure: data/read/experiment_name/*.csv\nExpected CSV format: feat_0_x, feat_0_y, feat_0_z, ... for 478 facial landmarks")
@@ -184,14 +224,13 @@ class StreamlitInterface:
                         st.dataframe(stats_df, use_container_width=True)
             
             # Auto-progress to Animation tab
-            st.info("✨ Data loaded successfully! Go to the **Animation** tab to create visualization.")
             
         except Exception as e:
             st.error(f"Error loading CSV: {str(e)}")
     
     def render_animation_tab(self):
-        """Render the Animation tab for creating and viewing animations."""
-        st.header("Create Animation")
+        """Render the Animation tab with 2-click system: Select → Analyze → Create."""
+        st.header("Facial Animation & Filter Analysis")
         
         if not hasattr(st.session_state, 'current_experiment'):
             st.warning("Please select an experiment in the Import tab first.")
@@ -200,102 +239,203 @@ class StreamlitInterface:
         experiment_path = st.session_state.current_experiment
         csv_files = list(experiment_path.glob("*.csv"))
         
-        if csv_files:
-            # Sort CSV files and find baseline
-            csv_files = sorted(csv_files, key=lambda x: x.stem)
-            baseline_file = next((f for f in csv_files if f.stem.endswith("-baseline")), None)
+        if not csv_files:
+            st.warning("No CSV files found in the selected experiment.")
+            return
+        
+        # Sort CSV files and find baseline
+        csv_files = sorted(csv_files, key=lambda x: x.stem)
+        baseline_file = next((f for f in csv_files if f.stem.endswith("-baseline")), None)
+        
+        # Create list of tests with baseline first if it exists
+        test_options = []
+        if baseline_file:
+            test_options.append(baseline_file.stem)
+            other_tests = [f.stem for f in csv_files if f != baseline_file]
+            test_options.extend(sorted(other_tests))
+        else:
+            test_options = [f.stem for f in csv_files]
+        
+        # STEP 1: Test Selection
+        st.subheader("🎯 Test Selection")
+        selected_test = st.selectbox(
+            "Choose test for analysis",
+            test_options,
+            index=0,
+            help="Select the test to analyze. Analysis will run automatically upon selection."
+        )
+        
+        # Get the selected file path
+        file_path = next(f for f in csv_files if f.stem == selected_test)
+        
+        # Check if file changed and reset analysis state
+        if file_path != st.session_state.csv_file_path:
+            st.session_state.csv_file_path = file_path
+            st.session_state.csv_data = None
+            st.session_state.frames_data = None
+            st.session_state.animation_created = False
+            st.session_state.comprehensive_analysis_done = False
             
-            # Create list of tests with baseline first if it exists
-            test_options = []
-            if baseline_file:
-                test_options.append(baseline_file.stem)
-                other_tests = [f.stem for f in csv_files if f != baseline_file]
-                test_options.extend(sorted(other_tests))
-            else:
-                test_options = [f.stem for f in csv_files]
+            # Load CSV data
+            try:
+                df = pd.read_csv(file_path)
+                if 'Time (s)' in df.columns:
+                    df = df.sort_values('Time (s)').reset_index(drop=True)
+                st.session_state.csv_data = df
+            except Exception as e:
+                st.error(f"Error loading file: {str(e)}")
+                return
+        
+        # STEP 2: Comprehensive Analysis (Auto-run)
+        if st.session_state.csv_data is not None and not st.session_state.comprehensive_analysis_done:
+            st.subheader("🔬 Analyzing Filter Performance...")
             
-            # Test selection dropdown (full width)
-            selected_test = st.selectbox(
-                "Test Selection",
-                test_options,
-                index=0 if baseline_file else 0,
-                help="Select the test to analyze. Baseline test is recommended for initial analysis."
+            with st.spinner("Analyzing optimal filters and smoothing combinations..."):
+                # Parse CSV to frames for analysis
+                df = st.session_state.csv_data
+                x_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_x')])
+                y_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_y')])
+                z_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_z')])
+                
+                original_frames = []
+                for i in range(len(df)):
+                    points = np.zeros((len(x_cols), 3))
+                    for j in range(len(x_cols)):
+                        points[j] = [
+                            df[x_cols[j]].iloc[i],
+                            df[y_cols[j]].iloc[i],
+                            df[z_cols[j]].iloc[i] * st.session_state.z_scale
+                        ]
+                    original_frames.append({
+                        'points': points,
+                        'colors': None
+                    })
+                
+                # Run comprehensive analysis
+                comprehensive_results = DataFilters.comprehensive_alignment_comparison(
+                    original_frames, 
+                    baseline_frame_count=st.session_state.baseline_frames
+                )
+                
+                st.session_state.comprehensive_analysis = comprehensive_results
+                st.session_state.original_frames = original_frames
+                st.session_state.comprehensive_analysis_done = True
+        
+        # STEP 3: Show Analysis Results
+        if st.session_state.comprehensive_analysis_done:
+            st.subheader("Filter Performance Results")
+            
+            # Display comprehensive comparison results
+            comprehensive_results = st.session_state.comprehensive_analysis
+            
+            st.write("**Movement Reduction Comparison:**")
+            st.caption("Higher percentages indicate better noise reduction while preserving microexpressions")
+            
+            # Create comprehensive DataFrame
+            comparison_data = []
+            for method_key in ['none', 'kabsch', 'kabsch_umeyama']:
+                if method_key in comprehensive_results:
+                    result = comprehensive_results[method_key]
+                    
+                    row = {
+                        'Method': result['method'],
+                        'Reduction %': f"{result['reduction_percent']:.2f}%"
+                    }
+                    
+                    # Add pre-smoothing results
+                    for window in [3, 4, 5]:
+                        key = f'pre_ras_{window}'
+                        if key in result:
+                            row[f'Pre-RAS {window}'] = f"{result[key]:.2f}%"
+                        else:
+                            row[f'Pre-RAS {window}'] = "N/A"
+                    
+                    # Add post-smoothing results
+                    for window in [3, 4, 5]:
+                        key = f'post_ras_{window}'
+                        if key in result:
+                            row[f'Post-RAS {window}'] = f"{result[key]:.2f}%"
+                        else:
+                            row[f'Post-RAS {window}'] = "N/A"
+                    
+                    comparison_data.append(row)
+            
+            comprehensive_df = pd.DataFrame(comparison_data)
+            st.dataframe(comprehensive_df, use_container_width=True)
+            
+            # Find and highlight best performing combination
+            best_overall = 0
+            best_method = ""
+            best_type = ""
+            best_smoothing = ""
+            best_window = 0
+            
+            for method_key in ['none', 'kabsch', 'kabsch_umeyama']:
+                if method_key in comprehensive_results:
+                    result = comprehensive_results[method_key]
+                    
+                    # Check base method
+                    if result['reduction_percent'] > best_overall:
+                        best_overall = result['reduction_percent']
+                        best_method = result['method']
+                        best_type = "Base alignment"
+                        best_smoothing = "off"
+                        best_window = 0
+                    
+                    # Check pre-smoothing
+                    for window in [3, 4, 5]:
+                        key = f'pre_ras_{window}'
+                        if key in result and result[key] > best_overall:
+                            best_overall = result[key]
+                            best_method = result['method']
+                            best_type = f"Pre-RAS {window}-frame"
+                            best_smoothing = "pre"
+                            best_window = window
+                    
+                    # Check post-smoothing
+                    for window in [3, 4, 5]:
+                        key = f'post_ras_{window}'
+                        if key in result and result[key] > best_overall:
+                            best_overall = result[key]
+                            best_method = result['method']
+                            best_type = f"Post-RAS {window}-frame"
+                            best_smoothing = "post"
+                            best_window = window
+            
+            st.info(f"🏆 **Best Filter Combination:** {best_method} with {best_type} ({best_overall:.2f}% movement reduction)")
+            
+            # Check if current settings match the best combination
+            current_matches_best = (
+                st.session_state.head_movement_compensation == best_method.lower().replace('-', '_') and
+                st.session_state.rolling_average_smoothing == best_smoothing and
+                (best_smoothing == "off" or st.session_state.smoothing_window == best_window)
             )
             
-            # Get the selected file path
-            file_path = next(f for f in csv_files if f.stem == selected_test)
+            if current_matches_best:
+                st.success("✅ **Current settings match the optimal filter combination!**")
             
-            if file_path != st.session_state.csv_file_path:
-                st.session_state.csv_file_path = file_path
-                st.session_state.csv_data = None
-                st.session_state.frames_data = None
-                st.session_state.animation_created = False
-                
-                # Load CSV silently
-                try:
-                    df = pd.read_csv(file_path)
-                    st.session_state.csv_data = df
-                except Exception as e:
-                    st.error(f"Error loading file: {str(e)}")
-                    return
-            
-            # Always set these defaults even if settings are hidden
-            if 'baseline_frames' not in st.session_state:
-                st.session_state.baseline_frames = 30
-            if 'color_mode' not in st.session_state:
-                st.session_state.color_mode = 'point_cloud_continuous'
-            if 'head_movement_compensation' not in st.session_state:
-                st.session_state.head_movement_compensation = 'kabsch'
-            st.session_state.z_scale = 25.0  # Always use 25x
-            
-            # Create animation button - only show if data is loaded
-            if st.session_state.csv_data is not None:
-                if st.button("🎬 Create Facial Animation", type="primary", use_container_width=True):
-                    self.create_animation()
+            # Create Animation Button - immediately after best filter info
+            if st.button("🎬 Create Side-by-Side Animation", type="primary", use_container_width=True):
+                self.create_comparison_animation()
         
-        # Main area - animation display
+        # Show animation results if created
         if st.session_state.animation_created and st.session_state.frames_data:
-            st.success("✅ Animation created successfully!\n\nThe interactive 3D viewer has been launched in a separate window.")
-            
-            # Add cluster analysis section
             st.markdown("---")
-            if st.button("📊 Analyze Facial Cluster Movements", type="secondary", use_container_width=True, key="analyze_clusters_btn"):
-                with st.spinner("Analyzing facial clusters..."):
-                    cluster_results = DataFilters.analyze_all_clusters(st.session_state.frames_data)
-                    st.session_state.cluster_analysis = cluster_results
-                    st.session_state.show_cluster_analysis = True
             
-            # Display saved analysis if exists
-            if hasattr(st.session_state, 'show_cluster_analysis') and st.session_state.show_cluster_analysis:
-                self.display_cluster_analysis_results()
+            # Quick actions
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Create New Animation", type="secondary", use_container_width=True, key="recreate_btn"):
+                    self.create_comparison_animation()
             
-            # Check if we need to launch the viewer
-            if hasattr(st.session_state, 'launch_viewer_pending') and st.session_state.launch_viewer_pending:
-                st.session_state.launch_viewer_pending = False
-                
-                # Capture data before thread
-                frames_data = st.session_state.frames_data
-                animation_fps = st.session_state.animation_fps
-                
-                # Launch viewer in background
-                def launch_viewer():
-                    success, message = DesktopLauncher.launch_interactive_animation_player(
-                        frames_data, 
-                        animation_fps
-                    )
-                    if not success:
-                        print(f"Failed to launch viewer: {message}")
-                
-                viewer_thread = threading.Thread(target=launch_viewer)
-                viewer_thread.daemon = True
-                viewer_thread.start()
-                
-        else:
-            if st.session_state.csv_data is None:
-                st.info("Select a test above to begin.")
+            with col2:
+                if st.button("📈 View Detailed Analysis", type="secondary", use_container_width=True, key="analysis_btn"):
+                    st.session_state.current_tab = 'Analysis'
+                    st.rerun()
         
-        # Settings footer (expandable) - always at the bottom
+        # Advanced Settings Footer (expandable) - always at the bottom
         if hasattr(st.session_state, 'current_experiment'):
+            st.markdown("---")
             with st.expander("⚙️ Advanced Settings", expanded=False):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -309,24 +449,7 @@ class StreamlitInterface:
                     )
                     
                     st.selectbox(
-                        "Color Mode",
-                        ["none", "point_cloud_continuous", "point_cloud_sd", "clusters_continuous", "clusters_sd"],
-                        key='color_mode',
-                        format_func=lambda x: {
-                            "none": "None (White Points)",
-                            "point_cloud_continuous": "Point Cloud (Continuous)",
-                            "point_cloud_sd": "Point Cloud (Standard Deviation)",
-                            "clusters_continuous": "Clusters (Continuous)",
-                            "clusters_sd": "Clusters (Standard Deviation)"
-                        }[x],
-                        help="Choose how to color the point cloud based on movement analysis"
-                    )
-                    
-                with col2:
-                    # Head movement compensation
-                    st.markdown("**Head Movement Compensation**")
-                    st.radio(
-                        "Select compensation method",
+                        "Head Movement Compensation",
                         ["off", "kabsch", "kabsch_umeyama"],
                         key='head_movement_compensation',
                         format_func=lambda x: {
@@ -336,14 +459,10 @@ class StreamlitInterface:
                         }[x],
                         help="Choose method for removing head movement to isolate microexpressions"
                     )
-                
-                # Rolling average smoothing section
-                st.markdown("---")
-                st.markdown("**Rolling Average Smoothing**")
-                smooth_col1, smooth_col2 = st.columns([2, 1])
-                with smooth_col1:
-                    st.radio(
-                        "Apply smoothing",
+                    
+                with col2:
+                    st.selectbox(
+                        "Rolling Average Smoothing",
                         ["off", "pre", "post"],
                         key='rolling_average_smoothing',
                         format_func=lambda x: {
@@ -353,21 +472,37 @@ class StreamlitInterface:
                         }[x],
                         help="Apply rolling average to reduce noise"
                     )
-                with smooth_col2:
+                    
                     if st.session_state.rolling_average_smoothing != "off":
                         st.number_input(
-                            "Window size",
+                            "Smoothing Window Size",
                             min_value=3,
                             max_value=5,
                             value=3,
                             key='smoothing_window',
                             help="Number of frames for rolling average"
                         )
+                
+                # Color mode section
+                st.markdown("---")
+                st.selectbox(
+                    "Color Mode",
+                    ["none", "point_cloud_continuous", "point_cloud_sd", "clusters_continuous", "clusters_sd"],
+                    key='color_mode',
+                    format_func=lambda x: {
+                        "none": "None (White Points)",
+                        "point_cloud_continuous": "Point Cloud (Continuous)",
+                        "point_cloud_sd": "Point Cloud (Standard Deviation)",
+                        "clusters_continuous": "Clusters (Continuous)",
+                        "clusters_sd": "Clusters (Standard Deviation)"
+                    }[x],
+                    help="Choose how to color the point cloud based on movement analysis"
+                )
     
-    def create_animation(self):
-        """Create animation from loaded CSV data."""
+    def create_comparison_animation(self):
+        """Create a comparison animation between original and filtered frames."""
         try:
-            with st.spinner("Creating animation..."):
+            with st.spinner("Creating comparison animation..."):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -497,14 +632,27 @@ class StreamlitInterface:
                 status_text.empty()
                 progress_bar.empty()
                 
-                st.success(f"✅ Animation created: {animation_name}")
-                st.info("Launching interactive 3D viewer...")
+                # Launch comparison viewer directly
+                comparison_label = f"Original vs {st.session_state.head_movement_compensation.title()}"
+                if st.session_state.rolling_average_smoothing != 'off':
+                    comparison_label += f" + {st.session_state.smoothing_window}-frame smoothing ({st.session_state.color_mode.replace('_', ' ').title()})"
                 
-                # Set flag to launch viewer after rerun
-                st.session_state.launch_viewer_pending = True
+                success, message = DesktopLauncher.launch_comparison_animation_player(
+                    st.session_state.original_frames,
+                    st.session_state.frames_data,
+                    st.session_state.animation_fps,
+                    comparison_label
+                )
                 
-                # Force UI update before launching viewer
-                st.rerun()
+                # Show result in sidebar
+                if success:
+                    with st.sidebar:
+                        st.success("🎬 Animation viewer launched!")
+                        st.caption("Side-by-side comparison playing in 3D viewer")
+                else:
+                    with st.sidebar:
+                        st.error("❌ Failed to launch viewer")
+                        st.caption(message)
                 
         except Exception as e:
             st.error(f"Error creating animation: {str(e)}")
@@ -589,195 +737,6 @@ class StreamlitInterface:
         )
         
         return frames_data
-    
-    def display_cluster_analysis_results(self):
-        """Display cluster analysis results from stored session state."""
-        if not hasattr(st.session_state, 'cluster_analysis'):
-            return
-            
-        cluster_results = st.session_state.cluster_analysis
-        
-        st.subheader("🔬 Facial Cluster Movement Analysis")
-        
-        # Create tabs for different views
-        tab1, tab2, tab3 = st.tabs(["Individual Clusters", "Cluster Groups", "Comparison"])
-        
-        with tab1:
-            st.write("### Movement by Individual Facial Clusters")
-            
-            # Sort clusters by total movement
-            sorted_clusters = sorted(
-                [(k, v) for k, v in cluster_results.items() if not k.startswith('GROUP_')],
-                key=lambda x: x[1]['total_movement'],
-                reverse=True
-            )
-            
-            # Display top movers
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**Most Active Clusters:**")
-                for i, (name, stats) in enumerate(sorted_clusters[:10]):
-                    st.write(f"{i+1}. **{name}**: {stats['total_movement']:.2f} total movement")
-                    st.write(f"   - Mean: {stats['mean_movement']:.4f}")
-                    st.write(f"   - Max: {stats['max_movement']:.4f}")
-            
-            with col2:
-                st.write("**Least Active Clusters:**")
-                for i, (name, stats) in enumerate(sorted_clusters[-10:][::-1]):
-                    st.write(f"{i+1}. **{name}**: {stats['total_movement']:.2f} total movement")
-                    st.write(f"   - Mean: {stats['mean_movement']:.4f}")
-                    st.write(f"   - Max: {stats['max_movement']:.4f}")
-        
-        with tab2:
-            st.write("### Movement by Cluster Groups")
-            
-            # Get group results
-            group_results = [(k, v) for k, v in cluster_results.items() if k.startswith('GROUP_')]
-            sorted_groups = sorted(group_results, key=lambda x: x[1]['total_movement'], reverse=True)
-            
-            # Create bar chart data
-            import pandas as pd
-            
-            group_data = pd.DataFrame([
-                {
-                    'Group': name.replace('GROUP_', ''),
-                    'Total Movement': stats['total_movement'],
-                    'Mean Movement': stats['mean_movement'],
-                    'Landmarks': stats['num_landmarks']
-                }
-                for name, stats in sorted_groups
-            ])
-            
-            st.bar_chart(group_data.set_index('Group')['Total Movement'])
-            
-            # Display detailed stats
-            for name, stats in sorted_groups:
-                group_name = name.replace('GROUP_', '')
-                with st.expander(f"📊 {group_name.title()} Details"):
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Total Movement", f"{stats['total_movement']:.2f}")
-                    with col2:
-                        st.metric("Mean Movement", f"{stats['mean_movement']:.4f}")
-                    with col3:
-                        st.metric("Landmarks", stats['num_landmarks'])
-        
-        with tab3:
-            st.write("### Comprehensive Alignment Method Comparison")
-            st.write("Includes rolling average smoothing (RAS) analysis before and after head alignment.")
-            
-            if st.button("🔬 Run Comprehensive Comparison", key="comprehensive_comparison_btn"):
-                with st.spinner("Running comprehensive alignment and smoothing comparison..."):
-                    # Need to get original unaligned frames for comparison
-                    # Re-parse the CSV to get original frames
-                    df = st.session_state.csv_data
-                    
-                    # Get coordinate columns
-                    x_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_x')])
-                    y_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_y')])
-                    z_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_z')])
-                    
-                    num_frames = len(df)
-                    num_landmarks = len(x_cols)
-                    
-                    original_frames = []
-                    
-                    # Recreate original frames
-                    for i in range(num_frames):
-                        points = np.zeros((num_landmarks, 3))
-                        for j in range(num_landmarks):
-                            points[j] = [
-                                df[x_cols[j]].iloc[i],
-                                df[y_cols[j]].iloc[i],
-                                df[z_cols[j]].iloc[i] * st.session_state.z_scale
-                            ]
-                        
-                        original_frames.append({
-                            'points': points,
-                            'colors': None
-                        })
-                    
-                    comprehensive_results = DataFilters.comprehensive_alignment_comparison(
-                        original_frames, 
-                        baseline_frame_count=st.session_state.baseline_frames
-                    )
-                
-                # Display comprehensive comparison results
-                st.write("#### Comprehensive Movement Reduction Analysis:")
-                st.write("**Legend:** Pre-RAS = Rolling Average Smoothing before alignment, Post-RAS = Rolling Average Smoothing after alignment")
-                
-                # Create comprehensive DataFrame
-                comparison_data = []
-                
-                for method_key in ['none', 'kabsch', 'kabsch_umeyama']:
-                    if method_key in comprehensive_results:
-                        result = comprehensive_results[method_key]
-                        
-                        row = {
-                            'Method': result['method'],
-                            'Reduction %': f"{result['reduction_percent']:.2f}%"
-                        }
-                        
-                        # Add pre-smoothing results
-                        for window in [3, 4, 5]:
-                            key = f'pre_ras_{window}'
-                            if key in result:
-                                row[f'Pre-RAS {window}'] = f"{result[key]:.2f}%"
-                            else:
-                                row[f'Pre-RAS {window}'] = "N/A"
-                        
-                        # Add post-smoothing results
-                        for window in [3, 4, 5]:
-                            key = f'post_ras_{window}'
-                            if key in result:
-                                row[f'Post-RAS {window}'] = f"{result[key]:.2f}%"
-                            else:
-                                row[f'Post-RAS {window}'] = "N/A"
-                        
-                        comparison_data.append(row)
-                
-                comprehensive_df = pd.DataFrame(comparison_data)
-                st.dataframe(comprehensive_df, use_container_width=True)
-                
-                # Summary insights
-                st.write("#### Key Insights:")
-                
-                # Find best performing combinations
-                best_overall = 0
-                best_method = ""
-                best_type = ""
-                
-                for method_key in ['none', 'kabsch', 'kabsch_umeyama']:
-                    if method_key in comprehensive_results:
-                        result = comprehensive_results[method_key]
-                        
-                        # Check base method
-                        if result['reduction_percent'] > best_overall:
-                            best_overall = result['reduction_percent']
-                            best_method = result['method']
-                            best_type = "Base alignment"
-                        
-                        # Check pre-smoothing
-                        for window in [3, 4, 5]:
-                            key = f'pre_ras_{window}'
-                            if key in result and result[key] > best_overall:
-                                best_overall = result[key]
-                                best_method = result['method']
-                                best_type = f"Pre-RAS {window}-frame"
-                        
-                        # Check post-smoothing
-                        for window in [3, 4, 5]:
-                            key = f'post_ras_{window}'
-                            if key in result and result[key] > best_overall:
-                                best_overall = result[key]
-                                best_method = result['method']
-                                best_type = f"Post-RAS {window}-frame"
-                
-                st.success(f"**Best combination:** {best_method} with {best_type} ({best_overall:.2f}% movement reduction)")
-                
-                # Store comprehensive results in session state
-                st.session_state.comprehensive_comparison = comprehensive_results
     
     def render_analysis_tab(self):
         """Render the Analysis tab for data merging and analysis."""
@@ -890,14 +849,126 @@ class StreamlitInterface:
                         st.error(f"Error loading {file.name}: {str(e)}")
     
     def render_feature_analysis(self):
-        """Render the feature analysis interface (placeholder)."""
-        st.info("🚧 Feature analysis coming soon...")
-        st.markdown("""
-        Planned features:
-        - Movement pattern analysis
-        - Statistical summaries
-        - Feature extraction
-        """)
+        """Render the feature analysis interface with cluster analysis."""
+        st.subheader("🔬 Facial Cluster Movement Analysis")
+        
+        if not hasattr(st.session_state, 'frames_data') or st.session_state.frames_data is None:
+            st.info("📊 Create an animation first to analyze facial cluster movements.")
+            st.markdown("""
+            **Available Analysis Features:**
+            - Individual cluster movement analysis
+            - Cluster group comparisons  
+            - Movement pattern visualization
+            - Statistical summaries per cluster
+            """)
+            return
+        
+        # Run cluster analysis
+        if st.button("📊 Analyze Facial Cluster Movements", type="primary", use_container_width=True):
+            with st.spinner("Analyzing facial clusters..."):
+                cluster_results = DataFilters.analyze_all_clusters(st.session_state.frames_data)
+                st.session_state.cluster_analysis = cluster_results
+                st.session_state.show_cluster_analysis = True
+        
+        # Display cluster analysis results
+        if hasattr(st.session_state, 'show_cluster_analysis') and st.session_state.show_cluster_analysis:
+            cluster_results = st.session_state.cluster_analysis
+            
+            # Create tabs for different views
+            tab1, tab2, tab3 = st.tabs(["Individual Clusters", "Cluster Groups", "Movement Patterns"])
+            
+            with tab1:
+                st.write("### Movement by Individual Facial Clusters")
+                
+                # Sort clusters by total movement
+                sorted_clusters = sorted(
+                    [(k, v) for k, v in cluster_results.items() if not k.startswith('GROUP_')],
+                    key=lambda x: x[1]['total_movement'],
+                    reverse=True
+                )
+                
+                # Display top movers
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Most Active Clusters:**")
+                    for i, (name, stats) in enumerate(sorted_clusters[:10]):
+                        st.write(f"{i+1}. **{name}**: {stats['total_movement']:.2f} total movement")
+                        st.write(f"   - Mean: {stats['mean_movement']:.4f}")
+                        st.write(f"   - Max: {stats['max_movement']:.4f}")
+                
+                with col2:
+                    st.write("**Least Active Clusters:**")
+                    for i, (name, stats) in enumerate(sorted_clusters[-10:][::-1]):
+                        st.write(f"{i+1}. **{name}**: {stats['total_movement']:.2f} total movement")
+                        st.write(f"   - Mean: {stats['mean_movement']:.4f}")
+                        st.write(f"   - Max: {stats['max_movement']:.4f}")
+            
+            with tab2:
+                st.write("### Movement by Cluster Groups")
+                
+                # Get group results
+                group_results = [(k, v) for k, v in cluster_results.items() if k.startswith('GROUP_')]
+                sorted_groups = sorted(group_results, key=lambda x: x[1]['total_movement'], reverse=True)
+                
+                if sorted_groups:
+                    # Create bar chart data
+                    import pandas as pd
+                    
+                    group_data = pd.DataFrame([
+                        {
+                            'Group': name.replace('GROUP_', ''),
+                            'Total Movement': stats['total_movement'],
+                            'Mean Movement': stats['mean_movement'],
+                            'Landmarks': stats['num_landmarks']
+                        }
+                        for name, stats in sorted_groups
+                    ])
+                    
+                    st.bar_chart(group_data.set_index('Group')['Total Movement'])
+                    
+                    # Display detailed stats
+                    for name, stats in sorted_groups:
+                        group_name = name.replace('GROUP_', '')
+                        with st.expander(f"📊 {group_name.title()} Details"):
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Total Movement", f"{stats['total_movement']:.2f}")
+                            with col2:
+                                st.metric("Mean Movement", f"{stats['mean_movement']:.4f}")
+                            with col3:
+                                st.metric("Landmarks", stats['num_landmarks'])
+                else:
+                    st.info("No cluster group data available.")
+            
+            with tab3:
+                st.write("### Movement Pattern Analysis")
+                
+                # Show movement statistics summary
+                all_movements = [stats['total_movement'] for stats in cluster_results.values() 
+                               if not stats.get('cluster_name', '').startswith('GROUP_')]
+                
+                if all_movements:
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Clusters", len(all_movements))
+                    with col2:
+                        st.metric("Mean Movement", f"{np.mean(all_movements):.2f}")
+                    with col3:
+                        st.metric("Max Movement", f"{np.max(all_movements):.2f}")
+                    with col4:
+                        st.metric("Movement Std Dev", f"{np.std(all_movements):.2f}")
+                    
+                    # Movement distribution
+                    st.write("**Movement Distribution:**")
+                    import pandas as pd
+                    movement_df = pd.DataFrame({
+                        'Cluster': [k for k in cluster_results.keys() if not k.startswith('GROUP_')],
+                        'Movement': [v['total_movement'] for k, v in cluster_results.items() if not k.startswith('GROUP_')]
+                    })
+                    st.bar_chart(movement_df.set_index('Cluster')['Movement'])
+                else:
+                    st.info("No movement pattern data available.")
     
     def render_model_training(self):
         """Render the model training interface (placeholder)."""
