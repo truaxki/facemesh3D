@@ -33,6 +33,22 @@ issues/ui_redesign_history.md
     └── workflows/export_pipeline.md (stalling fix)
 ```
 
+### Modular UI Architecture (animation-dev)
+```
+development/refactoring_animation_dev.md
+    ├── source/ui_components.py
+    │   ├── StatusSidebar
+    │   ├── AdvancedSettings
+    │   ├── DataPreview
+    │   └── FilterAnalysisDisplay
+    ├── source/color_processors.py
+    │   └── ColorProcessor (all color modes)
+    ├── source/session_state_manager.py
+    │   └── SessionStateManager
+    └── source/cluster_analysis_ui.py
+        └── ClusterAnalysisUI
+```
+
 ## Navigation by Task
 
 ### 🎯 Getting Started
@@ -45,6 +61,7 @@ issues/ui_redesign_history.md
 - **Web Interface**: `components/streamlit_interface.md`
 - **Animation Player**: `components/animation_player.md`
 - **Export System**: `workflows/export_pipeline.md`
+- **Modular UI**: `development/refactoring_animation_dev.md`
 
 ### 📊 Working with Features
 - **CSV Import**: `features/facial_landmark_import.md`
@@ -63,7 +80,8 @@ issues/ui_redesign_history.md
 - **Patterns**: `user_interactions/interaction_patterns.md` (if exists)
 
 ### 🚀 Development
-- **Refactoring**: `development/refactor_summary.md`
+- **Latest Refactoring**: `development/refactoring_animation_dev.md`
+- **System Refactoring**: `development/refactor_summary.md`
 - **Architecture**: `architecture/new_architecture_readme.md`
 - **Standards**: `development/coding_standards.md` (if exists)
 
@@ -92,6 +110,16 @@ export_pipeline.md
     └── features/interface_cleanup.md
 ```
 
+### Modular Component Dependencies (NEW)
+```
+components/streamlit_interface.md
+    └─> development/refactoring_animation_dev.md
+        ├── ui_components.py
+        ├── color_processors.py
+        ├── session_state_manager.py
+        └── cluster_analysis_ui.py
+```
+
 ## Tag-Based Navigation
 
 ### #user-preferences
@@ -103,6 +131,7 @@ export_pipeline.md
 - `components/animation_player.md`
 - `features/data_filtering.md`
 - `features/post_filter_movement.md`
+- `development/refactoring_animation_dev.md`
 
 ### #problem-solution
 - `issues/ui_redesign_history.md`
@@ -113,6 +142,7 @@ export_pipeline.md
 - `architecture/system_overview.md`
 - `architecture/new_architecture_readme.md`
 - `development/refactor_summary.md`
+- `development/refactoring_animation_dev.md`
 
 ### #visualization
 - `features/interactive_animation.md`
@@ -124,10 +154,15 @@ export_pipeline.md
 - `features/data_filtering.md`
 - `features/post_filter_movement.md`
 
+### #modularization
+- `development/refactoring_animation_dev.md`
+- `development/refactor_summary.md`
+
 ## Quick Links by Component
 
 ### Streamlit Interface
 - Main Doc: `components/streamlit_interface.md`
+- Refactoring: `development/refactoring_animation_dev.md`
 - Related:
   - `issues/ui_redesign_history.md`
   - `features/interface_cleanup.md`
@@ -164,11 +199,13 @@ export_pipeline.md
 5. `post_filter_movement.md` - Movement analysis
 6. `interactive_animation.md` - Enhanced player
 7. `interface_cleanup.md` - UI optimization
+8. `refactoring_animation_dev.md` - UI modularization (animation-dev branch)
 
 ### Major Refactors
 1. `development/refactor_summary.md` - System consolidation
 2. `architecture/new_architecture_readme.md` - Architecture update
 3. `issues/ui_redesign_history.md` - UI evolution
+4. `development/refactoring_animation_dev.md` - UI modularization (55% file size reduction)
 
 ## Usage Patterns
 
@@ -190,8 +227,14 @@ export_pipeline.md
 3. Review `features/` for implementations
 4. Check `index/glossary.md` for terms
 
+### For Code Organization
+1. Review `development/refactoring_animation_dev.md`
+2. Follow modular patterns established
+3. Maintain Single Responsibility Principle
+4. Update documentation after changes
+
 ## Metadata
 - Created: 2025-01-24T18:15:00Z
-- Updated: 2025-01-28T11:55:00Z
+- Updated: 2025-01-30T15:30:00Z
 - Confidence: High
 - Source: Complete memory system analysis 
