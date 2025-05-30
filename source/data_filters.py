@@ -947,4 +947,394 @@ class DataFilters:
         print(f"   Kabsch:           {kabsch_movement:.2f} ({(kabsch_movement/baseline_movement)*100:.1f}% of original)")
         print(f"   Kabsch-Umeyama:   {umeyama_movement:.2f} ({(umeyama_movement/baseline_movement)*100:.1f}% of original)")
         
-        return comparison 
+        return comparison
+    
+    @staticmethod
+    def apply_rolling_average_smoothing(frames_data: List[Dict], window_size: int) -> List[Dict]:
+        """
+        Apply rolling average smoothing to reduce noise and outliers.
+        
+        Args:
+            frames_data: List of frame dictionaries
+            window_size: Size of the rolling window (3, 4, 5, etc.)
+            
+        Returns:
+            List of smoothed frame dictionaries
+        """
+        if len(frames_data) < window_size:
+            print(f"⚠️ Not enough frames ({len(frames_data)}) for window size {window_size}")
+            return frames_data.copy()
+        
+        print(f"🔄 Applying {window_size}-frame rolling average smoothing...")
+        
+        smoothed_frames = []
+        
+        # Handle edge cases at the beginning
+        for i in range(len(frames_data)):
+            # Determine the actual window for this frame
+            start_idx = max(0, i - window_size // 2)
+            end_idx = min(len(frames_data), start_idx + window_size)
+            
+            # Adjust start if we're near the end
+            if end_idx - start_idx < window_size:
+                start_idx = max(0, end_idx - window_size)
+            
+            # Extract frames in the window
+            window_frames = frames_data[start_idx:end_idx]
+            
+            # Average the points across the window
+            averaged_points = np.zeros_like(window_frames[0]['points'])
+            for frame in window_frames:
+                averaged_points += frame['points']
+            averaged_points /= len(window_frames)
+            
+            # Create smoothed frame
+            smoothed_frame = frames_data[i].copy()
+            smoothed_frame['points'] = averaged_points
+            
+            # Preserve colors from original frame if they exist
+            if 'colors' in frames_data[i] and frames_data[i]['colors'] is not None:
+                smoothed_frame['colors'] = frames_data[i]['colors'].copy()
+            else:
+                smoothed_frame['colors'] = None
+            
+            # Add smoothing metadata
+            smoothed_frame['rolling_average_smoothing'] = {
+                'window_size': window_size,
+                'window_start': start_idx,
+                'window_end': end_idx,
+                'frames_in_window': len(window_frames)
+            }
+            
+            smoothed_frames.append(smoothed_frame)
+        
+        print(f"✅ Rolling average smoothing complete ({window_size}-frame window)")
+        return smoothed_frames
+    
+    @staticmethod
+    def comprehensive_alignment_comparison(frames_data: List[Dict], baseline_frame_count: int = 30) -> Dict[str, Any]:
+        """
+        Comprehensive comparison of alignment methods with rolling average smoothing.
+        Tests combinations of pre-smoothing, alignment, and post-smoothing.
+        
+        Args:
+            frames_data: List of frame dictionaries
+            baseline_frame_count: Number of baseline frames for alignment
+            
+        Returns:
+            Comprehensive comparison results
+        """
+        print("🔬 Starting comprehensive alignment comparison...")
+        
+        # Define smoothing window sizes to test
+        smoothing_windows = [3, 4, 5]
+        
+        # Initialize results
+        results = {}
+        
+        # Baseline: No alignment, no smoothing
+        print("\n📊 Baseline: No alignment, no smoothing...")
+        baseline_clusters = DataFilters.analyze_all_clusters(frames_data)
+        baseline_movement = sum(c['total_movement'] for c in baseline_clusters.values())
+        results['baseline'] = {
+            'total_movement': baseline_movement,
+            'method': 'No Alignment',
+            'reduction_percent': 0.0
+        }
+        
+        # Test each alignment method
+        alignment_methods = [
+            ('none', 'No Alignment'),
+            ('kabsch', 'Kabsch'),
+            ('kabsch_umeyama', 'Kabsch-Umeyama')
+        ]
+        
+        for method_key, method_name in alignment_methods:
+            print(f"\n🔧 Testing {method_name}...")
+            
+            # Standard alignment (no smoothing)
+            if method_key == 'none':
+                aligned_frames = frames_data.copy()
+            elif method_key == 'kabsch':
+                aligned_frames = DataFilters.align_frames_to_baseline(frames_data, baseline_frame_count)
+            elif method_key == 'kabsch_umeyama':
+                aligned_frames = DataFilters.align_frames_to_baseline_umeyama(frames_data, baseline_frame_count)
+            
+            aligned_clusters = DataFilters.analyze_all_clusters(aligned_frames)
+            aligned_movement = sum(c['total_movement'] for c in aligned_clusters.values())
+            
+            method_results = {
+                'total_movement': aligned_movement,
+                'method': method_name,
+                'reduction_percent': ((baseline_movement - aligned_movement) / baseline_movement) * 100
+            }
+            
+            # Test pre-smoothing (smooth first, then align)
+            for window in smoothing_windows:
+                print(f"  🔄 Pre-smoothing with {window}-frame window...")
+                
+                # Apply smoothing before alignment
+                pre_smoothed = DataFilters.apply_rolling_average_smoothing(frames_data, window)
+                
+                # Apply alignment to smoothed data
+                if method_key == 'none':
+                    pre_aligned_frames = pre_smoothed
+                elif method_key == 'kabsch':
+                    pre_aligned_frames = DataFilters.align_frames_to_baseline(pre_smoothed, baseline_frame_count)
+                elif method_key == 'kabsch_umeyama':
+                    pre_aligned_frames = DataFilters.align_frames_to_baseline_umeyama(pre_smoothed, baseline_frame_count)
+                
+                pre_clusters = DataFilters.analyze_all_clusters(pre_aligned_frames)
+                pre_movement = sum(c['total_movement'] for c in pre_clusters.values())
+                pre_reduction = ((baseline_movement - pre_movement) / baseline_movement) * 100
+                
+                method_results[f'pre_ras_{window}'] = pre_reduction
+            
+            # Test post-smoothing (align first, then smooth)
+            for window in smoothing_windows:
+                print(f"  🔄 Post-smoothing with {window}-frame window...")
+                
+                # Apply smoothing after alignment
+                post_smoothed = DataFilters.apply_rolling_average_smoothing(aligned_frames, window)
+                
+                post_clusters = DataFilters.analyze_all_clusters(post_smoothed)
+                post_movement = sum(c['total_movement'] for c in post_clusters.values())
+                post_reduction = ((baseline_movement - post_movement) / baseline_movement) * 100
+                
+                method_results[f'post_ras_{window}'] = post_reduction
+            
+            results[method_key] = method_results
+        
+        print(f"\n✅ Comprehensive comparison complete!")
+        return results
+    
+    @staticmethod
+    def generate_continuous_distance_colors(frames_data: List[Dict], baseline_reference: np.ndarray, 
+                                          mode: str = 'point_cloud') -> List[Dict]:
+        """
+        Generate colors based on continuous distance from baseline.
+        
+        Args:
+            frames_data: List of frame dictionaries
+            baseline_reference: Baseline points or cluster means to measure distance from
+            mode: 'point_cloud' or 'clusters'
+            
+        Returns:
+            List of frame dictionaries with continuous distance colors
+        """
+        print(f"🎨 Generating continuous distance colors ({mode} mode)...")
+        
+        colored_frames = []
+        all_distances = []
+        
+        # First pass: calculate all distances for normalization
+        for frame_data in frames_data:
+            if mode == 'point_cloud':
+                # Direct point-to-point distance
+                distances = np.linalg.norm(frame_data['points'] - baseline_reference, axis=1)
+            elif mode == 'clusters':
+                # Calculate cluster means and compare to baseline
+                from facial_clusters import FACIAL_CLUSTERS
+                distances = np.zeros(len(frame_data['points']))
+                
+                for cluster_name, indices in FACIAL_CLUSTERS.items():
+                    cluster_points = frame_data['points'][indices]
+                    cluster_mean = np.mean(cluster_points, axis=0)
+                    baseline_mean = baseline_reference[cluster_name]
+                    distance = np.linalg.norm(cluster_mean - baseline_mean)
+                    
+                    # Assign same distance to all points in cluster
+                    for idx in indices:
+                        distances[idx] = distance
+            
+            all_distances.extend(distances)
+            frame_data['_temp_distances'] = distances
+        
+        # Calculate normalization value (95th percentile)
+        all_distances = np.array(all_distances)
+        p95 = np.percentile(all_distances, 95)
+        if p95 == 0:
+            p95 = 1.0
+        
+        print(f"📊 Distance statistics: Mean={np.mean(all_distances):.4f}, P95={p95:.4f}")
+        
+        # Second pass: apply colors
+        for frame_data in frames_data:
+            colored_frame = frame_data.copy()
+            distances = frame_data['_temp_distances']
+            normalized = np.clip(distances / p95, 0, 1)
+            
+            # Generate heat map colors: blue (no movement) -> green -> yellow -> red (high movement)
+            colors = np.zeros((len(distances), 3))
+            
+            for i, intensity in enumerate(normalized):
+                if intensity < 0.25:  # Very low movement - blue to cyan
+                    colors[i] = [0, intensity*4, 1.0]
+                elif intensity < 0.5:  # Low movement - cyan to green
+                    t = (intensity - 0.25) * 4
+                    colors[i] = [0, 1.0, 1.0 - t]
+                elif intensity < 0.75:  # Medium movement - green to yellow
+                    t = (intensity - 0.5) * 4
+                    colors[i] = [t, 1.0, 0]
+                else:  # High movement - yellow to red
+                    t = (intensity - 0.75) * 4
+                    colors[i] = [1.0, 1.0 - t, 0]
+            
+            colored_frame['colors'] = colors
+            colored_frame['color_mode'] = f'{mode}_continuous'
+            colored_frame['normalized_distances'] = normalized
+            
+            # Clean up temp data
+            if '_temp_distances' in colored_frame:
+                del colored_frame['_temp_distances']
+            
+            colored_frames.append(colored_frame)
+        
+        print(f"✅ Continuous distance coloring complete!")
+        return colored_frames
+    
+    @staticmethod
+    def generate_sd_distance_colors(frames_data: List[Dict], baseline_mean: np.ndarray, 
+                                   baseline_std: np.ndarray, mode: str = 'point_cloud') -> List[Dict]:
+        """
+        Generate colors based on standard deviation from baseline.
+        Green: < 1 SD, Yellow: 1-3 SD, Red: >= 3 SD
+        
+        Args:
+            frames_data: List of frame dictionaries
+            baseline_mean: Mean positions from baseline
+            baseline_std: Standard deviations from baseline
+            mode: 'point_cloud' or 'clusters'
+            
+        Returns:
+            List of frame dictionaries with SD-based colors
+        """
+        print(f"🎨 Generating standard deviation colors ({mode} mode)...")
+        
+        colored_frames = []
+        
+        for frame_data in frames_data:
+            colored_frame = frame_data.copy()
+            
+            if mode == 'point_cloud':
+                # Calculate z-scores for each point
+                distances = np.linalg.norm(frame_data['points'] - baseline_mean, axis=1)
+                
+                # Calculate average std per point (magnitude of 3D std)
+                std_magnitudes = np.linalg.norm(baseline_std, axis=1)
+                std_magnitudes[std_magnitudes == 0] = 1.0  # Avoid division by zero
+                
+                z_scores = distances / std_magnitudes
+                
+            elif mode == 'clusters':
+                # Calculate cluster means and compare to baseline
+                from facial_clusters import FACIAL_CLUSTERS
+                z_scores = np.zeros(len(frame_data['points']))
+                
+                for cluster_name, indices in FACIAL_CLUSTERS.items():
+                    cluster_points = frame_data['points'][indices]
+                    cluster_mean = np.mean(cluster_points, axis=0)
+                    
+                    baseline_cluster_mean = baseline_mean[cluster_name]
+                    baseline_cluster_std = baseline_std[cluster_name]
+                    
+                    distance = np.linalg.norm(cluster_mean - baseline_cluster_mean)
+                    std_magnitude = np.linalg.norm(baseline_cluster_std)
+                    if std_magnitude == 0:
+                        std_magnitude = 1.0
+                    
+                    z_score = distance / std_magnitude
+                    
+                    # Assign same z-score to all points in cluster
+                    for idx in indices:
+                        z_scores[idx] = z_score
+            
+            # Apply color based on SD ranges
+            colors = np.zeros((len(z_scores), 3))
+            
+            for i, z in enumerate(z_scores):
+                if z < 1.0:  # Green: < 1 SD
+                    colors[i] = [0, 1.0, 0]
+                elif z < 3.0:  # Yellow: 1-3 SD
+                    colors[i] = [1.0, 1.0, 0]
+                else:  # Red: >= 3 SD
+                    colors[i] = [1.0, 0, 0]
+            
+            colored_frame['colors'] = colors
+            colored_frame['color_mode'] = f'{mode}_sd'
+            colored_frame['z_scores'] = z_scores
+            
+            colored_frames.append(colored_frame)
+        
+        # Print statistics
+        all_z_scores = np.concatenate([frame['z_scores'] for frame in colored_frames])
+        green_count = np.sum(all_z_scores < 1.0)
+        yellow_count = np.sum((all_z_scores >= 1.0) & (all_z_scores < 3.0))
+        red_count = np.sum(all_z_scores >= 3.0)
+        total_count = len(all_z_scores)
+        
+        print(f"📊 SD Distribution: Green(<1SD): {green_count/total_count*100:.1f}%, "
+              f"Yellow(1-3SD): {yellow_count/total_count*100:.1f}%, "
+              f"Red(>=3SD): {red_count/total_count*100:.1f}%")
+        
+        print(f"✅ Standard deviation coloring complete!")
+        return colored_frames
+    
+    @staticmethod
+    def calculate_baseline_cluster_means(baseline_frames: List[Dict]) -> Dict[str, np.ndarray]:
+        """
+        Calculate mean position for each cluster from baseline frames.
+        
+        Args:
+            baseline_frames: List of baseline frame dictionaries
+            
+        Returns:
+            Dictionary mapping cluster names to their mean positions
+        """
+        from facial_clusters import FACIAL_CLUSTERS
+        
+        cluster_means = {}
+        
+        for cluster_name, indices in FACIAL_CLUSTERS.items():
+            # Collect all points for this cluster across baseline frames
+            cluster_points_all = []
+            for frame in baseline_frames:
+                cluster_points = frame['points'][indices]
+                cluster_mean = np.mean(cluster_points, axis=0)
+                cluster_points_all.append(cluster_mean)
+            
+            # Calculate mean across all baseline frames
+            cluster_means[cluster_name] = np.mean(cluster_points_all, axis=0)
+        
+        return cluster_means
+    
+    @staticmethod
+    def calculate_baseline_cluster_stats(baseline_frames: List[Dict]) -> Dict[str, Dict]:
+        """
+        Calculate mean and std for each cluster from baseline frames.
+        
+        Args:
+            baseline_frames: List of baseline frame dictionaries
+            
+        Returns:
+            Dictionary with 'means' and 'stds' for each cluster
+        """
+        from facial_clusters import FACIAL_CLUSTERS
+        
+        cluster_stats = {'means': {}, 'stds': {}}
+        
+        for cluster_name, indices in FACIAL_CLUSTERS.items():
+            # Collect all cluster means across baseline frames
+            cluster_means_all = []
+            for frame in baseline_frames:
+                cluster_points = frame['points'][indices]
+                cluster_mean = np.mean(cluster_points, axis=0)
+                cluster_means_all.append(cluster_mean)
+            
+            cluster_means_all = np.array(cluster_means_all)
+            
+            # Calculate statistics
+            cluster_stats['means'][cluster_name] = np.mean(cluster_means_all, axis=0)
+            cluster_stats['stds'][cluster_name] = np.std(cluster_means_all, axis=0)
+        
+        return cluster_stats 

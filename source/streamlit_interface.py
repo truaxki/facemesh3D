@@ -46,10 +46,12 @@ class StreamlitInterface:
             'frames_data': None,
             'animation_created': False,
             'z_scale': 25.0,
-            'color_mode': 'local_movement',  # renamed from post_filter_movement
+            'color_mode': 'point_cloud_continuous',  # Updated default
             'baseline_frames': 30,
             'animation_fps': 15,
-            'head_movement_compensation': 'kabsch'  # New default setting
+            'head_movement_compensation': 'kabsch',  # Default setting
+            'rolling_average_smoothing': 'off',  # New setting
+            'smoothing_window': 3  # New setting
         }
         
         for key, value in defaults.items():
@@ -241,7 +243,7 @@ class StreamlitInterface:
             if 'baseline_frames' not in st.session_state:
                 st.session_state.baseline_frames = 30
             if 'color_mode' not in st.session_state:
-                st.session_state.color_mode = 'local_movement'
+                st.session_state.color_mode = 'point_cloud_continuous'
             if 'head_movement_compensation' not in st.session_state:
                 st.session_state.head_movement_compensation = 'kabsch'
             st.session_state.z_scale = 25.0  # Always use 25x
@@ -306,29 +308,61 @@ class StreamlitInterface:
                         help="Number of initial frames to average for stable baseline"
                     )
                     
-                    st.radio(
-                        "Head Movement Compensation",
-                        options=['off', 'kabsch', 'kabsch_umeyama'],
-                        key='head_movement_compensation',
+                    st.selectbox(
+                        "Color Mode",
+                        ["none", "point_cloud_continuous", "point_cloud_sd", "clusters_continuous", "clusters_sd"],
+                        key='color_mode',
                         format_func=lambda x: {
-                            'off': 'Off (No compensation)',
-                            'kabsch': 'Rotation & Translation (Kabsch)',
-                            'kabsch_umeyama': 'Rotation, Translation & Scale (Kabsch-Umeyama)'
+                            "none": "None (White Points)",
+                            "point_cloud_continuous": "Point Cloud (Continuous)",
+                            "point_cloud_sd": "Point Cloud (Standard Deviation)",
+                            "clusters_continuous": "Clusters (Continuous)",
+                            "clusters_sd": "Clusters (Standard Deviation)"
                         }[x],
-                        help="Method for removing head movement to isolate facial expressions"
+                        help="Choose how to color the point cloud based on movement analysis"
                     )
                     
                 with col2:
-                    st.selectbox(
-                        "Color Mode",
-                        ["local_movement", "single"],
-                        key='color_mode',
+                    # Head movement compensation
+                    st.markdown("**Head Movement Compensation**")
+                    st.radio(
+                        "Select compensation method",
+                        ["off", "kabsch", "kabsch_umeyama"],
+                        key='head_movement_compensation',
                         format_func=lambda x: {
-                            "local_movement": "Local Movement (Microexpressions)",
-                            "single": "Single Color"
+                            "off": "Off (no compensation)",
+                            "kabsch": "Rotation and displacement (Kabsch)",
+                            "kabsch_umeyama": "Rotation, displacement and scale (Kabsch-Umeyama)"
                         }[x],
-                        help="Local Movement highlights facial movements after head motion removal"
+                        help="Choose method for removing head movement to isolate microexpressions"
                     )
+                
+                # Rolling average smoothing section
+                st.markdown("---")
+                st.markdown("**Rolling Average Smoothing**")
+                smooth_col1, smooth_col2 = st.columns([2, 1])
+                with smooth_col1:
+                    st.radio(
+                        "Apply smoothing",
+                        ["off", "pre", "post"],
+                        key='rolling_average_smoothing',
+                        format_func=lambda x: {
+                            "off": "Off",
+                            "pre": "Before alignment",
+                            "post": "After alignment"
+                        }[x],
+                        help="Apply rolling average to reduce noise"
+                    )
+                with smooth_col2:
+                    if st.session_state.rolling_average_smoothing != "off":
+                        st.number_input(
+                            "Window size",
+                            min_value=3,
+                            max_value=5,
+                            value=3,
+                            key='smoothing_window',
+                            help="Number of frames for rolling average"
+                        )
     
     def create_animation(self):
         """Create animation from loaded CSV data."""
@@ -370,6 +404,14 @@ class StreamlitInterface:
                         'colors': None  # Will be set based on color mode
                     })
                 
+                # Apply rolling average smoothing if enabled (pre-alignment)
+                if st.session_state.rolling_average_smoothing == 'pre':
+                    status_text.text(f"Applying {st.session_state.smoothing_window}-frame rolling average smoothing...")
+                    frames_data = DataFilters.apply_rolling_average_smoothing(
+                        frames_data, 
+                        st.session_state.smoothing_window
+                    )
+                
                 # Apply selected head movement compensation
                 if st.session_state.head_movement_compensation != 'off':
                     if st.session_state.head_movement_compensation == 'kabsch':
@@ -379,22 +421,39 @@ class StreamlitInterface:
                             baseline_frame_count=st.session_state.baseline_frames
                         )
                     elif st.session_state.head_movement_compensation == 'kabsch_umeyama':
-                        status_text.text("Applying Kabsch-Umeyama alignment to remove head motion and scaling...")
+                        status_text.text("Applying Kabsch-Umeyama alignment to remove head motion with scale...")
                         frames_data = DataFilters.align_frames_to_baseline_umeyama(
                             frames_data, 
                             baseline_frame_count=st.session_state.baseline_frames
                         )
-                else:
-                    status_text.text("No head movement compensation applied...")
                 
-                # Apply coloring based on mode
-                if st.session_state.color_mode == 'local_movement':
-                    status_text.text("Calculating local movement colors...")
-                    frames_data = self.apply_local_movement_coloring(frames_data)
-                else:
-                    # Single color mode
+                # Apply rolling average smoothing if enabled (post-alignment)
+                if st.session_state.rolling_average_smoothing == 'post':
+                    status_text.text(f"Applying {st.session_state.smoothing_window}-frame rolling average smoothing...")
+                    frames_data = DataFilters.apply_rolling_average_smoothing(
+                        frames_data, 
+                        st.session_state.smoothing_window
+                    )
+                
+                # Apply coloring based on mode (after all transformations)
+                if st.session_state.color_mode == 'none':
+                    # White points
+                    status_text.text("Using default white coloring...")
                     for frame in frames_data:
-                        frame['colors'] = np.tile([0.5, 0.7, 1.0], (len(frame['points']), 1))
+                        num_points = len(frame['points'])
+                        frame['colors'] = np.ones((num_points, 3)) * 0.9  # Light gray/white
+                elif st.session_state.color_mode == 'point_cloud_continuous':
+                    status_text.text("Calculating point cloud continuous colors...")
+                    frames_data = self.apply_point_cloud_continuous_coloring(frames_data)
+                elif st.session_state.color_mode == 'point_cloud_sd':
+                    status_text.text("Calculating point cloud standard deviation colors...")
+                    frames_data = self.apply_point_cloud_sd_coloring(frames_data)
+                elif st.session_state.color_mode == 'clusters_continuous':
+                    status_text.text("Calculating cluster continuous colors...")
+                    frames_data = self.apply_clusters_continuous_coloring(frames_data)
+                elif st.session_state.color_mode == 'clusters_sd':
+                    status_text.text("Calculating cluster standard deviation colors...")
+                    frames_data = self.apply_clusters_sd_coloring(frames_data)
                 
                 progress_bar.progress(1.0)
                 
@@ -421,7 +480,9 @@ class StreamlitInterface:
                     'fps': st.session_state.animation_fps,
                     'created_at': datetime.now().isoformat(),
                     'head_movement_compensation': st.session_state.head_movement_compensation,
-                    'kabsch_aligned': st.session_state.head_movement_compensation != 'off'
+                    'kabsch_aligned': st.session_state.head_movement_compensation != 'off',
+                    'rolling_average_smoothing': st.session_state.rolling_average_smoothing,
+                    'smoothing_window': st.session_state.smoothing_window if st.session_state.rolling_average_smoothing != 'off' else None
                 }
                 
                 metadata_path = save_path / "metadata.json"
@@ -450,59 +511,82 @@ class StreamlitInterface:
             import traceback
             st.error(traceback.format_exc())
     
-    def apply_local_movement_coloring(self, frames_data):
-        """Apply coloring based on frame-to-frame movement (microexpressions)."""
-        # Calculate frame-to-frame displacement
-        for i in range(len(frames_data)):
-            if i == 0:
-                # First frame - no movement
-                frames_data[i]['colors'] = np.zeros((len(frames_data[i]['points']), 3))
-                frames_data[i]['colors'][:] = [0, 0, 1]  # Blue for no movement
-            else:
-                # Calculate displacement from previous frame
-                prev_points = frames_data[i-1]['points']
-                curr_points = frames_data[i]['points']
-                
-                # Compute displacement magnitude for each point
-                displacement = np.linalg.norm(curr_points - prev_points, axis=1)
-                
-                # Store for normalization
-                frames_data[i]['displacement_magnitude'] = displacement
+    def apply_point_cloud_continuous_coloring(self, frames_data):
+        """Apply coloring based on continuous distance from baseline (for microexpressions)."""
+        if len(frames_data) < st.session_state.baseline_frames:
+            print("⚠️ Not enough frames for baseline calculation")
+            return frames_data
         
-        # Calculate global statistics for normalization
-        all_displacements = []
-        for i in range(1, len(frames_data)):
-            if 'displacement_magnitude' in frames_data[i]:
-                all_displacements.extend(frames_data[i]['displacement_magnitude'])
+        # Calculate baseline as average of first N frames
+        baseline_frames = frames_data[:st.session_state.baseline_frames]
+        num_points = len(baseline_frames[0]['points'])
         
-        if all_displacements:
-            all_displacements = np.array(all_displacements)
-            p95 = np.percentile(all_displacements, 95)
-            
-            # Apply colors based on normalized displacement
-            for i in range(len(frames_data)):
-                if i == 0:
-                    continue
-                
-                displacement = frames_data[i]['displacement_magnitude']
-                normalized = np.clip(displacement / p95, 0, 1) if p95 > 0 else displacement
-                
-                # Create color map (blue -> green -> yellow -> red)
-                colors = np.zeros((len(displacement), 3))
-                for j, intensity in enumerate(normalized):
-                    if intensity < 0.25:  # Very low movement - blue to cyan
-                        colors[j] = [0, intensity*4, 1.0]
-                    elif intensity < 0.5:  # Low movement - cyan to green
-                        t = (intensity - 0.25) * 4
-                        colors[j] = [0, 1.0, 1.0 - t]
-                    elif intensity < 0.75:  # Medium movement - green to yellow
-                        t = (intensity - 0.5) * 4
-                        colors[j] = [t, 1.0, 0]
-                    else:  # High movement - yellow to red
-                        t = (intensity - 0.75) * 4
-                        colors[j] = [1.0, 1.0 - t, 0]
-                
-                frames_data[i]['colors'] = colors
+        # Compute average baseline points
+        baseline_points = np.zeros((num_points, 3))
+        for frame in baseline_frames:
+            baseline_points += frame['points']
+        baseline_points /= len(baseline_frames)
+        
+        # Apply continuous distance coloring to all frames
+        frames_data = DataFilters.generate_continuous_distance_colors(
+            frames_data, baseline_points, 'point_cloud'
+        )
+        
+        return frames_data
+    
+    def apply_point_cloud_sd_coloring(self, frames_data):
+        """Apply coloring based on standard deviation from baseline."""
+        if len(frames_data) < st.session_state.baseline_frames:
+            print("⚠️ Not enough frames for baseline calculation")
+            return frames_data
+        
+        # Calculate baseline statistics
+        baseline_frames = frames_data[:st.session_state.baseline_frames]
+        num_points = len(baseline_frames[0]['points'])
+        
+        # Compute baseline mean and std for each point
+        baseline_points_all = np.array([frame['points'] for frame in baseline_frames])
+        baseline_mean = np.mean(baseline_points_all, axis=0)
+        baseline_std = np.std(baseline_points_all, axis=0)
+        
+        # Apply SD coloring
+        frames_data = DataFilters.generate_sd_distance_colors(
+            frames_data, baseline_mean, baseline_std, 'point_cloud'
+        )
+        
+        return frames_data
+    
+    def apply_clusters_continuous_coloring(self, frames_data):
+        """Apply coloring based on cluster mean continuous distance from baseline."""
+        if len(frames_data) < st.session_state.baseline_frames:
+            print("⚠️ Not enough frames for baseline calculation")
+            return frames_data
+        
+        # Calculate baseline cluster means
+        baseline_frames = frames_data[:st.session_state.baseline_frames]
+        baseline_cluster_means = DataFilters.calculate_baseline_cluster_means(baseline_frames)
+        
+        # Apply continuous distance coloring for clusters
+        frames_data = DataFilters.generate_continuous_distance_colors(
+            frames_data, baseline_cluster_means, 'clusters'
+        )
+        
+        return frames_data
+    
+    def apply_clusters_sd_coloring(self, frames_data):
+        """Apply coloring based on cluster standard deviation from baseline."""
+        if len(frames_data) < st.session_state.baseline_frames:
+            print("⚠️ Not enough frames for baseline calculation")
+            return frames_data
+        
+        # Calculate baseline cluster statistics
+        baseline_frames = frames_data[:st.session_state.baseline_frames]
+        baseline_stats = DataFilters.calculate_baseline_cluster_stats(baseline_frames)
+        
+        # Apply SD coloring for clusters
+        frames_data = DataFilters.generate_sd_distance_colors(
+            frames_data, baseline_stats['means'], baseline_stats['stds'], 'clusters'
+        )
         
         return frames_data
     
@@ -580,10 +664,11 @@ class StreamlitInterface:
                         st.metric("Landmarks", stats['num_landmarks'])
         
         with tab3:
-            st.write("### Alignment Method Comparison")
+            st.write("### Comprehensive Alignment Method Comparison")
+            st.write("Includes rolling average smoothing (RAS) analysis before and after head alignment.")
             
-            if st.button("🔬 Compare Alignment Methods", key="compare_alignment_methods_display_btn"):
-                with st.spinner("Comparing alignment methods..."):
+            if st.button("🔬 Run Comprehensive Comparison", key="comprehensive_comparison_btn"):
+                with st.spinner("Running comprehensive alignment and smoothing comparison..."):
                     # Need to get original unaligned frames for comparison
                     # Re-parse the CSV to get original frames
                     df = st.session_state.csv_data
@@ -613,38 +698,86 @@ class StreamlitInterface:
                             'colors': None
                         })
                     
-                    comparison = DataFilters.compare_alignment_methods(
+                    comprehensive_results = DataFilters.comprehensive_alignment_comparison(
                         original_frames, 
                         baseline_frame_count=st.session_state.baseline_frames
                     )
                 
-                # Display comparison results
-                st.write("#### Movement Reduction by Method:")
+                # Display comprehensive comparison results
+                st.write("#### Comprehensive Movement Reduction Analysis:")
+                st.write("**Legend:** Pre-RAS = Rolling Average Smoothing before alignment, Post-RAS = Rolling Average Smoothing after alignment")
                 
-                baseline = comparison['no_alignment']['total_movement']
+                # Create comprehensive DataFrame
+                comparison_data = []
                 
-                comparison_df = pd.DataFrame([
-                    {
-                        'Method': 'No Alignment',
-                        'Total Movement': baseline,
-                        'Reduction %': 0
-                    },
-                    {
-                        'Method': 'Kabsch',
-                        'Total Movement': comparison['kabsch']['total_movement'],
-                        'Reduction %': (1 - comparison['kabsch']['total_movement']/baseline) * 100
-                    },
-                    {
-                        'Method': 'Kabsch-Umeyama',
-                        'Total Movement': comparison['kabsch_umeyama']['total_movement'],
-                        'Reduction %': (1 - comparison['kabsch_umeyama']['total_movement']/baseline) * 100
-                    }
-                ])
+                for method_key in ['none', 'kabsch', 'kabsch_umeyama']:
+                    if method_key in comprehensive_results:
+                        result = comprehensive_results[method_key]
+                        
+                        row = {
+                            'Method': result['method'],
+                            'Reduction %': f"{result['reduction_percent']:.2f}%"
+                        }
+                        
+                        # Add pre-smoothing results
+                        for window in [3, 4, 5]:
+                            key = f'pre_ras_{window}'
+                            if key in result:
+                                row[f'Pre-RAS {window}'] = f"{result[key]:.2f}%"
+                            else:
+                                row[f'Pre-RAS {window}'] = "N/A"
+                        
+                        # Add post-smoothing results
+                        for window in [3, 4, 5]:
+                            key = f'post_ras_{window}'
+                            if key in result:
+                                row[f'Post-RAS {window}'] = f"{result[key]:.2f}%"
+                            else:
+                                row[f'Post-RAS {window}'] = "N/A"
+                        
+                        comparison_data.append(row)
                 
-                st.dataframe(comparison_df)
+                comprehensive_df = pd.DataFrame(comparison_data)
+                st.dataframe(comprehensive_df, use_container_width=True)
                 
-                # Store comparison in session state
-                st.session_state.alignment_comparison = comparison
+                # Summary insights
+                st.write("#### Key Insights:")
+                
+                # Find best performing combinations
+                best_overall = 0
+                best_method = ""
+                best_type = ""
+                
+                for method_key in ['none', 'kabsch', 'kabsch_umeyama']:
+                    if method_key in comprehensive_results:
+                        result = comprehensive_results[method_key]
+                        
+                        # Check base method
+                        if result['reduction_percent'] > best_overall:
+                            best_overall = result['reduction_percent']
+                            best_method = result['method']
+                            best_type = "Base alignment"
+                        
+                        # Check pre-smoothing
+                        for window in [3, 4, 5]:
+                            key = f'pre_ras_{window}'
+                            if key in result and result[key] > best_overall:
+                                best_overall = result[key]
+                                best_method = result['method']
+                                best_type = f"Pre-RAS {window}-frame"
+                        
+                        # Check post-smoothing
+                        for window in [3, 4, 5]:
+                            key = f'post_ras_{window}'
+                            if key in result and result[key] > best_overall:
+                                best_overall = result[key]
+                                best_method = result['method']
+                                best_type = f"Post-RAS {window}-frame"
+                
+                st.success(f"**Best combination:** {best_method} with {best_type} ({best_overall:.2f}% movement reduction)")
+                
+                # Store comprehensive results in session state
+                st.session_state.comprehensive_comparison = comprehensive_results
     
     def render_analysis_tab(self):
         """Render the Analysis tab for data merging and analysis."""
