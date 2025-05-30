@@ -1,28 +1,45 @@
-"""Source Package
+"""
+Facemesh 3D Point Cloud Visualization - Source Package
 
-Modular point cloud visualization package for Open3D and Streamlit.
-Clean separation of concerns with focused modules.
+This package contains all the source code for the facial microexpression analysis system.
 """
 
-from source.file_manager import FileManager
-from source.video_exporter import VideoExporter
-from source.desktop_launcher import DesktopLauncher
-from source.visualization import PointCloudVisualizer
-from source.streamlit_interface import StreamlitInterface
-from source.data_filters import DataFilters
-from source.facial_clusters import FACIAL_CLUSTERS, CLUSTER_GROUPS
+# Core functionality modules
+from .viewer_core import ViewerCore
+from .file_manager import FileManager
+from .animation_player import AnimationPlayer, ComparisonAnimationPlayer
+from .desktop_launcher import DesktopLauncher
+from .data_filters import DataFilters
+from .visualization import VisualizationManager
+from .video_exporter import VideoExporter
+from .facial_clusters import FACIAL_CLUSTERS
+
+# UI modules (refactored for modularity)
+from .streamlit_interface import StreamlitInterface
+from .ui_components import StatusSidebar, AdvancedSettings, DataPreview, FilterAnalysisDisplay
+from .color_processors import ColorProcessor
+from .session_state_manager import SessionStateManager
+from .cluster_analysis_ui import ClusterAnalysisUI
 
 __version__ = "2.0.0"
 __author__ = "Point Cloud Visualization Team"
 
-# Package metadata
 __all__ = [
+    'ViewerCore',
     'FileManager', 
-    'VideoExporter',
+    'AnimationPlayer',
+    'ComparisonAnimationPlayer',
     'DesktopLauncher',
-    'PointCloudVisualizer',
-    'StreamlitInterface',
     'DataFilters',
+    'VisualizationManager',
+    'VideoExporter',
     'FACIAL_CLUSTERS',
-    'CLUSTER_GROUPS'
+    'StreamlitInterface',
+    'StatusSidebar',
+    'AdvancedSettings',
+    'DataPreview',
+    'FilterAnalysisDisplay',
+    'ColorProcessor',
+    'SessionStateManager',
+    'ClusterAnalysisUI'
 ] 
