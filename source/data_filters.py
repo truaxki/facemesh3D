@@ -6,7 +6,7 @@ Includes Kabsch algorithm for rigid body alignment and other matrix operations.
 
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Tuple, Optional, Union
+from typing import List, Dict, Tuple, Optional, Union, Any
 from scipy.spatial.distance import cdist
 from scipy.linalg import svd, det
 
@@ -604,4 +604,347 @@ class DataFilters:
             frame['applied_filters'] = applied_filters
         
         print(f"✅ Filter chain complete! Applied {len(applied_filters)} filters.")
-        return result_frames 
+        return result_frames
+    
+    @staticmethod
+    def kabsch_umeyama_algorithm(P: np.ndarray, Q: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float, float]:
+        """
+        Kabsch-Umeyama algorithm for optimal rotation, translation, and scaling.
+        
+        Finds the optimal similarity transformation (rotation + translation + uniform scaling)
+        that minimizes RMSD between two point sets.
+        
+        Args:
+            P: Reference point set (N x 3)
+            Q: Point set to align to P (N x 3)
+            
+        Returns:
+            R: Optimal rotation matrix (3 x 3)
+            t: Translation vector (3,)
+            s: Scaling factor
+            rmsd: Root mean square deviation after alignment
+        """
+        assert P.shape == Q.shape, "Point sets must have same shape"
+        assert P.shape[1] == 3, "Points must be 3D"
+        
+        # Step 1: Center both point sets
+        centroid_P = np.mean(P, axis=0)
+        centroid_Q = np.mean(Q, axis=0)
+        
+        P_centered = P - centroid_P
+        Q_centered = Q - centroid_Q
+        
+        # Step 2: Compute variance of Q (source points being transformed)
+        var_Q = np.sum(Q_centered**2) / len(Q)
+        
+        # Handle degenerate case
+        if var_Q < 1e-10:
+            # If Q has no variance, return identity transformation
+            R = np.eye(3)
+            t = centroid_P - centroid_Q
+            s = 1.0
+            rmsd = np.sqrt(np.mean(np.sum((P - Q - t)**2, axis=1)))
+            return R, t, s, rmsd
+        
+        # Step 3: Compute cross-covariance matrix (P^T × Q)
+        H = P_centered.T @ Q_centered / len(P)
+        
+        # Step 4: Singular Value Decomposition
+        U, S, Vt = svd(H)
+        
+        # Step 5: Compute rotation matrix with proper reflection handling
+        R = U @ Vt
+        
+        # Check for reflection case
+        d = det(R)
+        if d < 0:
+            # Reflection case - flip the last column of U
+            U_corrected = U.copy()
+            U_corrected[:, -1] *= -1
+            R = U_corrected @ Vt
+            # Also flip the corresponding singular value
+            S_corrected = S.copy()
+            S_corrected[-1] *= -1
+        else:
+            S_corrected = S
+        
+        # Step 6: Compute optimal scaling factor
+        s = np.sum(S_corrected) / var_Q
+        
+        # Step 7: Compute translation
+        t = centroid_P - s * R @ centroid_Q
+        
+        # Step 8: Calculate RMSD
+        Q_aligned = s * (R @ Q_centered.T).T + centroid_P
+        rmsd = np.sqrt(np.mean(np.sum((P - Q_aligned)**2, axis=1)))
+        
+        return R, t, s, rmsd
+    
+    @staticmethod
+    def apply_transformation_with_scale(points: np.ndarray, R: np.ndarray, t: np.ndarray, s: float) -> np.ndarray:
+        """
+        Apply rotation, translation, and scaling to point cloud.
+        
+        Args:
+            points: Point cloud (N x 3)
+            R: Rotation matrix (3 x 3)
+            t: Translation vector (3,)
+            s: Scaling factor
+            
+        Returns:
+            Transformed points (N x 3)
+        """
+        return s * (R @ points.T).T + t
+    
+    @staticmethod
+    def align_frames_to_baseline_umeyama(frames_data: List[Dict], baseline_frame_count: int = 30) -> List[Dict]:
+        """
+        Align all frames using Kabsch-Umeyama algorithm (includes scaling).
+        
+        Args:
+            frames_data: List of frame dictionaries with 'points' and 'colors'
+            baseline_frame_count: Number of initial frames to average for baseline (default: 30)
+            
+        Returns:
+            List of aligned frame dictionaries
+        """
+        if not frames_data:
+            raise ValueError("Empty frames data")
+        
+        # Determine actual number of frames to use for baseline
+        actual_baseline_count = min(baseline_frame_count, len(frames_data))
+        
+        print(f"🎯 Computing baseline from average of first {actual_baseline_count} frames (Kabsch-Umeyama)")
+        print(f"📊 Total frames to align: {len(frames_data)}")
+        
+        # Compute average baseline points
+        baseline_frames = frames_data[:actual_baseline_count]
+        first_frame_point_count = len(baseline_frames[0]['points'])
+        
+        # Check that all baseline frames have the same number of points
+        for i, frame in enumerate(baseline_frames):
+            if len(frame['points']) != first_frame_point_count:
+                print(f"⚠️ Baseline frame {i}: Point count mismatch ({len(frame['points'])} vs {first_frame_point_count})")
+                raise ValueError(f"Inconsistent point counts in baseline frames")
+        
+        # Calculate average points across baseline frames
+        baseline_points = np.zeros((first_frame_point_count, 3))
+        for frame in baseline_frames:
+            baseline_points += frame['points']
+        baseline_points /= actual_baseline_count
+        
+        print(f"📍 Baseline computed from {actual_baseline_count} frames with {len(baseline_points)} points each")
+        
+        aligned_frames = []
+        alignment_stats = []
+        
+        for i, frame_data in enumerate(frames_data):
+            current_points = frame_data['points'].copy()
+            
+            if len(current_points) != len(baseline_points):
+                print(f"⚠️ Frame {i}: Point count mismatch ({len(current_points)} vs {len(baseline_points)})")
+                # Skip frames with different point counts
+                aligned_frames.append(frame_data.copy())
+                continue
+            
+            # Apply Kabsch-Umeyama alignment
+            R, t, s, rmsd = DataFilters.kabsch_umeyama_algorithm(baseline_points, current_points)
+            
+            # Transform points
+            aligned_points = DataFilters.apply_transformation_with_scale(current_points, R, t, s)
+            
+            # Create aligned frame
+            aligned_frame = frame_data.copy()
+            aligned_frame['points'] = aligned_points
+            
+            # Store transformation info
+            aligned_frame['kabsch_umeyama_transform'] = {
+                'rotation_matrix': R,
+                'translation_vector': t,
+                'scale_factor': s,
+                'rmsd': rmsd,
+                'baseline_type': f'average_of_{actual_baseline_count}_frames',
+                'is_baseline_frame': i < actual_baseline_count
+            }
+            
+            alignment_stats.append({
+                'frame_idx': i,
+                'rmsd': rmsd,
+                'scale_factor': s,
+                'is_baseline_contributor': i < actual_baseline_count
+            })
+            
+            aligned_frames.append(aligned_frame)
+        
+        # Print alignment statistics
+        baseline_stats = [stat for stat in alignment_stats if stat['is_baseline_contributor']]
+        other_stats = [stat for stat in alignment_stats if not stat['is_baseline_contributor']]
+        
+        if baseline_stats:
+            print(f"📈 Baseline frames alignment statistics:")
+            print(f"   RMSD - Mean: {np.mean([s['rmsd'] for s in baseline_stats]):.4f}")
+            print(f"   Scale - Mean: {np.mean([s['scale_factor'] for s in baseline_stats]):.4f}")
+        
+        if other_stats:
+            print(f"📈 Non-baseline frames alignment statistics:")
+            print(f"   RMSD - Mean: {np.mean([s['rmsd'] for s in other_stats]):.4f}")
+            print(f"   Scale - Mean: {np.mean([s['scale_factor'] for s in other_stats]):.4f}")
+        
+        print(f"✅ Kabsch-Umeyama alignment complete!")
+        return aligned_frames
+    
+    @staticmethod
+    def calculate_cluster_movement(frames_data: List[Dict], cluster_indices: List[int], 
+                                 cluster_name: str = "cluster") -> Dict[str, Any]:
+        """
+        Calculate movement statistics for a specific cluster of landmarks.
+        
+        Args:
+            frames_data: List of frame dictionaries
+            cluster_indices: List of landmark indices in the cluster
+            cluster_name: Name of the cluster for reporting
+            
+        Returns:
+            Dictionary with cluster movement statistics
+        """
+        if len(frames_data) < 2:
+            return {
+                'cluster_name': cluster_name,
+                'num_landmarks': len(cluster_indices),
+                'total_movement': 0.0,
+                'mean_movement': 0.0,
+                'max_movement': 0.0,
+                'frame_movements': []
+            }
+        
+        frame_movements = []
+        all_point_movements = []
+        
+        for i in range(1, len(frames_data)):
+            prev_points = frames_data[i-1]['points']
+            curr_points = frames_data[i]['points']
+            
+            # Extract cluster points
+            prev_cluster = prev_points[cluster_indices]
+            curr_cluster = curr_points[cluster_indices]
+            
+            # Calculate displacement for each point in cluster
+            displacements = np.linalg.norm(curr_cluster - prev_cluster, axis=1)
+            
+            # Frame statistics
+            frame_movement = {
+                'frame': i,
+                'mean_displacement': np.mean(displacements),
+                'max_displacement': np.max(displacements),
+                'sum_displacement': np.sum(displacements)
+            }
+            
+            frame_movements.append(frame_movement)
+            all_point_movements.extend(displacements)
+        
+        # Overall statistics
+        all_point_movements = np.array(all_point_movements)
+        
+        return {
+            'cluster_name': cluster_name,
+            'num_landmarks': len(cluster_indices),
+            'total_movement': np.sum(all_point_movements),
+            'mean_movement': np.mean(all_point_movements),
+            'std_movement': np.std(all_point_movements),
+            'max_movement': np.max(all_point_movements),
+            'p95_movement': np.percentile(all_point_movements, 95),
+            'frame_movements': frame_movements
+        }
+    
+    @staticmethod
+    def analyze_all_clusters(frames_data: List[Dict]) -> Dict[str, Dict]:
+        """
+        Analyze movement for all predefined facial clusters.
+        
+        Args:
+            frames_data: List of frame dictionaries
+            
+        Returns:
+            Dictionary mapping cluster names to their movement statistics
+        """
+        from facial_clusters import FACIAL_CLUSTERS, CLUSTER_GROUPS
+        
+        results = {}
+        
+        # Analyze individual clusters
+        print("📊 Analyzing movement by facial cluster...")
+        for cluster_name, indices in FACIAL_CLUSTERS.items():
+            results[cluster_name] = DataFilters.calculate_cluster_movement(
+                frames_data, indices, cluster_name
+            )
+        
+        # Analyze cluster groups
+        print("📊 Analyzing movement by cluster groups...")
+        for group_name, cluster_list in CLUSTER_GROUPS.items():
+            # Combine indices from all clusters in the group
+            group_indices = []
+            for cluster in cluster_list:
+                group_indices.extend(FACIAL_CLUSTERS.get(cluster, []))
+            group_indices = list(set(group_indices))  # Remove duplicates
+            
+            results[f"GROUP_{group_name}"] = DataFilters.calculate_cluster_movement(
+                frames_data, group_indices, f"GROUP_{group_name}"
+            )
+        
+        return results
+    
+    @staticmethod
+    def compare_alignment_methods(frames_data: List[Dict], baseline_frame_count: int = 30) -> Dict[str, Any]:
+        """
+        Compare different alignment methods and their effect on movement detection.
+        
+        Args:
+            frames_data: List of frame dictionaries
+            baseline_frame_count: Number of baseline frames
+            
+        Returns:
+            Comparison results including cluster movement analysis
+        """
+        print("🔬 Comparing alignment methods...")
+        
+        # Method 1: No alignment (baseline)
+        print("\n1️⃣ Analyzing without alignment...")
+        no_align_clusters = DataFilters.analyze_all_clusters(frames_data)
+        
+        # Method 2: Kabsch alignment (rotation + translation)
+        print("\n2️⃣ Applying Kabsch alignment...")
+        kabsch_frames = DataFilters.align_frames_to_baseline(frames_data, baseline_frame_count)
+        kabsch_clusters = DataFilters.analyze_all_clusters(kabsch_frames)
+        
+        # Method 3: Kabsch-Umeyama alignment (rotation + translation + scale)
+        print("\n3️⃣ Applying Kabsch-Umeyama alignment...")
+        umeyama_frames = DataFilters.align_frames_to_baseline_umeyama(frames_data, baseline_frame_count)
+        umeyama_clusters = DataFilters.analyze_all_clusters(umeyama_frames)
+        
+        # Compare results
+        comparison = {
+            'no_alignment': {
+                'cluster_analysis': no_align_clusters,
+                'total_movement': sum(c['total_movement'] for c in no_align_clusters.values())
+            },
+            'kabsch': {
+                'cluster_analysis': kabsch_clusters,
+                'total_movement': sum(c['total_movement'] for c in kabsch_clusters.values())
+            },
+            'kabsch_umeyama': {
+                'cluster_analysis': umeyama_clusters,
+                'total_movement': sum(c['total_movement'] for c in umeyama_clusters.values())
+            }
+        }
+        
+        # Print summary
+        print("\n📊 Movement Reduction Summary:")
+        baseline_movement = comparison['no_alignment']['total_movement']
+        kabsch_movement = comparison['kabsch']['total_movement']
+        umeyama_movement = comparison['kabsch_umeyama']['total_movement']
+        
+        print(f"   No alignment:      {baseline_movement:.2f}")
+        print(f"   Kabsch:           {kabsch_movement:.2f} ({(kabsch_movement/baseline_movement)*100:.1f}% of original)")
+        print(f"   Kabsch-Umeyama:   {umeyama_movement:.2f} ({(umeyama_movement/baseline_movement)*100:.1f}% of original)")
+        
+        return comparison 

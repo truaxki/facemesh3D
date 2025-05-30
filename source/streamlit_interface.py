@@ -48,7 +48,8 @@ class StreamlitInterface:
             'z_scale': 25.0,
             'color_mode': 'local_movement',  # renamed from post_filter_movement
             'baseline_frames': 30,
-            'animation_fps': 15
+            'animation_fps': 15,
+            'head_movement_compensation': 'kabsch'  # New default setting
         }
         
         for key, value in defaults.items():
@@ -241,6 +242,8 @@ class StreamlitInterface:
                 st.session_state.baseline_frames = 30
             if 'color_mode' not in st.session_state:
                 st.session_state.color_mode = 'local_movement'
+            if 'head_movement_compensation' not in st.session_state:
+                st.session_state.head_movement_compensation = 'kabsch'
             st.session_state.z_scale = 25.0  # Always use 25x
             
             # Create animation button - only show if data is loaded
@@ -251,6 +254,18 @@ class StreamlitInterface:
         # Main area - animation display
         if st.session_state.animation_created and st.session_state.frames_data:
             st.success("✅ Animation created successfully!\n\nThe interactive 3D viewer has been launched in a separate window.")
+            
+            # Add cluster analysis section
+            st.markdown("---")
+            if st.button("📊 Analyze Facial Cluster Movements", type="secondary", use_container_width=True, key="analyze_clusters_btn"):
+                with st.spinner("Analyzing facial clusters..."):
+                    cluster_results = DataFilters.analyze_all_clusters(st.session_state.frames_data)
+                    st.session_state.cluster_analysis = cluster_results
+                    st.session_state.show_cluster_analysis = True
+            
+            # Display saved analysis if exists
+            if hasattr(st.session_state, 'show_cluster_analysis') and st.session_state.show_cluster_analysis:
+                self.display_cluster_analysis_results()
             
             # Check if we need to launch the viewer
             if hasattr(st.session_state, 'launch_viewer_pending') and st.session_state.launch_viewer_pending:
@@ -290,6 +305,19 @@ class StreamlitInterface:
                         key='baseline_frames',
                         help="Number of initial frames to average for stable baseline"
                     )
+                    
+                    st.radio(
+                        "Head Movement Compensation",
+                        options=['off', 'kabsch', 'kabsch_umeyama'],
+                        key='head_movement_compensation',
+                        format_func=lambda x: {
+                            'off': 'Off (No compensation)',
+                            'kabsch': 'Rotation & Translation (Kabsch)',
+                            'kabsch_umeyama': 'Rotation, Translation & Scale (Kabsch-Umeyama)'
+                        }[x],
+                        help="Method for removing head movement to isolate facial expressions"
+                    )
+                    
                 with col2:
                     st.selectbox(
                         "Color Mode",
@@ -342,12 +370,22 @@ class StreamlitInterface:
                         'colors': None  # Will be set based on color mode
                     })
                 
-                # Apply Kabsch alignment
-                status_text.text("Applying Kabsch alignment to remove head motion...")
-                frames_data = DataFilters.align_frames_to_baseline(
-                    frames_data, 
-                    baseline_frame_count=st.session_state.baseline_frames
-                )
+                # Apply selected head movement compensation
+                if st.session_state.head_movement_compensation != 'off':
+                    if st.session_state.head_movement_compensation == 'kabsch':
+                        status_text.text("Applying Kabsch alignment to remove head motion...")
+                        frames_data = DataFilters.align_frames_to_baseline(
+                            frames_data, 
+                            baseline_frame_count=st.session_state.baseline_frames
+                        )
+                    elif st.session_state.head_movement_compensation == 'kabsch_umeyama':
+                        status_text.text("Applying Kabsch-Umeyama alignment to remove head motion and scaling...")
+                        frames_data = DataFilters.align_frames_to_baseline_umeyama(
+                            frames_data, 
+                            baseline_frame_count=st.session_state.baseline_frames
+                        )
+                else:
+                    status_text.text("No head movement compensation applied...")
                 
                 # Apply coloring based on mode
                 if st.session_state.color_mode == 'local_movement':
@@ -382,7 +420,8 @@ class StreamlitInterface:
                     'baseline_frames': st.session_state.baseline_frames,
                     'fps': st.session_state.animation_fps,
                     'created_at': datetime.now().isoformat(),
-                    'kabsch_aligned': True,  # Always true in refactored version
+                    'head_movement_compensation': st.session_state.head_movement_compensation,
+                    'kabsch_aligned': st.session_state.head_movement_compensation != 'off'
                 }
                 
                 metadata_path = save_path / "metadata.json"
@@ -466,6 +505,146 @@ class StreamlitInterface:
                 frames_data[i]['colors'] = colors
         
         return frames_data
+    
+    def display_cluster_analysis_results(self):
+        """Display cluster analysis results from stored session state."""
+        if not hasattr(st.session_state, 'cluster_analysis'):
+            return
+            
+        cluster_results = st.session_state.cluster_analysis
+        
+        st.subheader("🔬 Facial Cluster Movement Analysis")
+        
+        # Create tabs for different views
+        tab1, tab2, tab3 = st.tabs(["Individual Clusters", "Cluster Groups", "Comparison"])
+        
+        with tab1:
+            st.write("### Movement by Individual Facial Clusters")
+            
+            # Sort clusters by total movement
+            sorted_clusters = sorted(
+                [(k, v) for k, v in cluster_results.items() if not k.startswith('GROUP_')],
+                key=lambda x: x[1]['total_movement'],
+                reverse=True
+            )
+            
+            # Display top movers
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Most Active Clusters:**")
+                for i, (name, stats) in enumerate(sorted_clusters[:10]):
+                    st.write(f"{i+1}. **{name}**: {stats['total_movement']:.2f} total movement")
+                    st.write(f"   - Mean: {stats['mean_movement']:.4f}")
+                    st.write(f"   - Max: {stats['max_movement']:.4f}")
+            
+            with col2:
+                st.write("**Least Active Clusters:**")
+                for i, (name, stats) in enumerate(sorted_clusters[-10:][::-1]):
+                    st.write(f"{i+1}. **{name}**: {stats['total_movement']:.2f} total movement")
+                    st.write(f"   - Mean: {stats['mean_movement']:.4f}")
+                    st.write(f"   - Max: {stats['max_movement']:.4f}")
+        
+        with tab2:
+            st.write("### Movement by Cluster Groups")
+            
+            # Get group results
+            group_results = [(k, v) for k, v in cluster_results.items() if k.startswith('GROUP_')]
+            sorted_groups = sorted(group_results, key=lambda x: x[1]['total_movement'], reverse=True)
+            
+            # Create bar chart data
+            import pandas as pd
+            
+            group_data = pd.DataFrame([
+                {
+                    'Group': name.replace('GROUP_', ''),
+                    'Total Movement': stats['total_movement'],
+                    'Mean Movement': stats['mean_movement'],
+                    'Landmarks': stats['num_landmarks']
+                }
+                for name, stats in sorted_groups
+            ])
+            
+            st.bar_chart(group_data.set_index('Group')['Total Movement'])
+            
+            # Display detailed stats
+            for name, stats in sorted_groups:
+                group_name = name.replace('GROUP_', '')
+                with st.expander(f"📊 {group_name.title()} Details"):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Movement", f"{stats['total_movement']:.2f}")
+                    with col2:
+                        st.metric("Mean Movement", f"{stats['mean_movement']:.4f}")
+                    with col3:
+                        st.metric("Landmarks", stats['num_landmarks'])
+        
+        with tab3:
+            st.write("### Alignment Method Comparison")
+            
+            if st.button("🔬 Compare Alignment Methods", key="compare_alignment_methods_display_btn"):
+                with st.spinner("Comparing alignment methods..."):
+                    # Need to get original unaligned frames for comparison
+                    # Re-parse the CSV to get original frames
+                    df = st.session_state.csv_data
+                    
+                    # Get coordinate columns
+                    x_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_x')])
+                    y_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_y')])
+                    z_cols = sorted([col for col in df.columns if col.startswith('feat_') and col.endswith('_z')])
+                    
+                    num_frames = len(df)
+                    num_landmarks = len(x_cols)
+                    
+                    original_frames = []
+                    
+                    # Recreate original frames
+                    for i in range(num_frames):
+                        points = np.zeros((num_landmarks, 3))
+                        for j in range(num_landmarks):
+                            points[j] = [
+                                df[x_cols[j]].iloc[i],
+                                df[y_cols[j]].iloc[i],
+                                df[z_cols[j]].iloc[i] * st.session_state.z_scale
+                            ]
+                        
+                        original_frames.append({
+                            'points': points,
+                            'colors': None
+                        })
+                    
+                    comparison = DataFilters.compare_alignment_methods(
+                        original_frames, 
+                        baseline_frame_count=st.session_state.baseline_frames
+                    )
+                
+                # Display comparison results
+                st.write("#### Movement Reduction by Method:")
+                
+                baseline = comparison['no_alignment']['total_movement']
+                
+                comparison_df = pd.DataFrame([
+                    {
+                        'Method': 'No Alignment',
+                        'Total Movement': baseline,
+                        'Reduction %': 0
+                    },
+                    {
+                        'Method': 'Kabsch',
+                        'Total Movement': comparison['kabsch']['total_movement'],
+                        'Reduction %': (1 - comparison['kabsch']['total_movement']/baseline) * 100
+                    },
+                    {
+                        'Method': 'Kabsch-Umeyama',
+                        'Total Movement': comparison['kabsch_umeyama']['total_movement'],
+                        'Reduction %': (1 - comparison['kabsch_umeyama']['total_movement']/baseline) * 100
+                    }
+                ])
+                
+                st.dataframe(comparison_df)
+                
+                # Store comparison in session state
+                st.session_state.alignment_comparison = comparison
     
     def render_analysis_tab(self):
         """Render the Analysis tab for data merging and analysis."""
