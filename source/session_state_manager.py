@@ -20,7 +20,7 @@ class SessionStateManager:
         'animation_created': False,
         'z_scale': 25.0,
         'color_mode': 'point_cloud_sd',  # Standard deviation as default
-        'baseline_frames': 30,
+        'baseline_frames': 1,
         'animation_fps': 15,
         'head_movement_compensation': 'kabsch',  # Default to Kabsch
         'rolling_average_smoothing': 'off',
