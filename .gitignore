@@ -54,3 +54,6 @@ data/write/*
 
 # Streamlit
 .streamlit/ 
+
+# csv files
+*.csv

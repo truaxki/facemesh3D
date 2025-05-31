@@ -19,6 +19,7 @@ from typing import List, Dict, Any
 from file_manager import FileManager
 from desktop_launcher import DesktopLauncher
 from data_filters import DataFilters
+from derived_features import DerivedFeatures
 
 # Import new modular UI components
 from ui_components import StatusSidebar, AdvancedSettings, DataPreview, FilterAnalysisDisplay
@@ -375,172 +376,138 @@ class StreamlitInterface:
             st.error(traceback.format_exc())
     
     def render_analysis_tab(self):
-        """Render the Analysis tab for data merging and analysis."""
-        st.header("Analysis")
+        """Render the Analysis tab for data processing and feature extraction."""
+        st.header("Analysis & Feature Extraction")
         
         # Create tabs within Analysis
-        analysis_tabs = st.tabs(["Merge and Import", "Feature Analysis", "Model Training"])
+        analysis_tabs = st.tabs(["File Overview", "Feature Analysis", "Model Training"])
         
         with analysis_tabs[0]:
-            self.render_merge_and_import()
+            self.render_unified_file_table()
         with analysis_tabs[1]:
-            ClusterAnalysisUI.render_feature_analysis()
+            self.render_feature_analysis()
         with analysis_tabs[2]:
             self.render_model_training()
     
-    def render_merge_and_import(self):
-        """Render the merge and import interface with side-by-side folder views."""
-        st.subheader("Merge and Import")
+    def render_unified_file_table(self):
+        """Render the unified file table showing both READ and WRITE files."""
+        st.subheader("File Overview")
+        
+        current_experiment = SessionStateManager.get('current_experiment')
+        if not current_experiment:
+            st.info("Please select an experiment in the Import tab first")
+            return
+        
+        # Get files from both READ and WRITE directories
+        read_dir = current_experiment
+        write_dir = self.data_write_dir / current_experiment.name
+        write_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Collect all files
+        all_files = []
+        
+        # Read files
+        try:
+            read_files = list(read_dir.glob("*.csv"))
+            for file in read_files:
+                df = pd.read_csv(file)
+                all_files.append({
+                    'File Name': file.name,
+                    'Source': 'READ',
+                    'Type': 'Raw Data',
+                    'Rows': len(df),
+                    'Point Features': len([col for col in df.columns if col.startswith('feat_')]) // 3,
+                    'Derived Features': 0,  # Raw files have no derived features
+                    'Has Time Column': 'Time (s)' in df.columns,
+                    'Memory (MB)': df.memory_usage(deep=True).sum() / 1024 / 1024,
+                    'Path': str(file)
+                })
+        except Exception as e:
+            st.error(f"Error reading READ directory: {str(e)}")
+        
+        # Write files
+        try:
+            write_files = list(write_dir.glob("*.csv"))
+            for file in write_files:
+                try:
+                    df = pd.read_csv(file)
+                    point_features = len([col for col in df.columns if col.startswith('feat_')]) // 3
+                    derived_features = len([col for col in df.columns if not col.startswith('feat_') and 
+                                          col not in ['Time (s)', 'source_file', 'frame_index', 'time_seconds']])
+                    
+                    all_files.append({
+                        'File Name': file.name,
+                        'Source': 'WRITE',
+                        'Type': 'Processed Data',
+                        'Rows': len(df),
+                        'Point Features': point_features,
+                        'Derived Features': derived_features,
+                        'Has Time Column': 'Time (s)' in df.columns or 'time_seconds' in df.columns,
+                        'Memory (MB)': df.memory_usage(deep=True).sum() / 1024 / 1024,
+                        'Path': str(file)
+                    })
+                except Exception as e:
+                    st.warning(f"Could not analyze {file.name}: {str(e)}")
+        except Exception as e:
+            st.error(f"Error reading WRITE directory: {str(e)}")
+        
+        if all_files:
+            # Convert to DataFrame for display
+            files_df = pd.DataFrame(all_files)
+            files_df['Memory (MB)'] = files_df['Memory (MB)'].round(2)
+            
+            # Color code the table based on source
+            def color_source(val):
+                if val == 'READ':
+                    return 'background-color: #e8f4fd; border-left: 4px solid #1f77b4'  # Light blue with border
+                elif val == 'WRITE':
+                    return 'background-color: #f0f8e8; border-left: 4px solid #2ca02c'  # Light green with border
+                return ''
+            
+            # Display styled table with modern Streamlit styling
+            styled_df = files_df.style.map(color_source, subset=['Source'])
+            styled_df = styled_df.set_table_styles([
+                {'selector': 'th', 'props': [('background-color', '#f0f2f6'), ('color', '#262730'), ('font-weight', 'bold')]},
+                {'selector': 'td', 'props': [('padding', '8px'), ('border-bottom', '1px solid #e6e9ef')]},
+                {'selector': 'tr:hover', 'props': [('background-color', '#f8f9fa')]}
+            ])
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Store file information for feature analysis tab
+            SessionStateManager.set('available_files_info', files_df.to_dict('records'))
+        else:
+            st.info("No CSV files found in the experiment directories")
+    
+    def render_feature_analysis(self):
+        """Render the feature analysis interface."""
+        st.subheader("Feature Analysis")
         
         # Get the currently selected experiment path from session state
         current_experiment = SessionStateManager.get('current_experiment')
         
-        # Create side-by-side columns
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### READ")
-            if current_experiment:
-                st.caption(f"📂 {current_experiment}")
-                
-                # List contents of read directory with selection
-                try:
-                    files = sorted(current_experiment.glob("*.csv"))
-                    if files:
-                        st.markdown("#### CSV Files:")
-                        selected_files = []
-                        for file in files:
-                            if st.checkbox(f"📄 {file.name}", key=f"read_{file.name}"):
-                                selected_files.append(file)
-                        
-                        if selected_files:
-                            SessionStateManager.set('selected_read_files', selected_files)
-                    else:
-                        st.info("No CSV files found in directory")
-                except Exception as e:
-                    st.error(f"Error reading directory: {str(e)}")
-            else:
-                st.info("Please select an experiment in the Import tab first")
-        
-        with col2:
-            st.markdown("### WRITE")
-            if current_experiment:
-                # Create matching write directory path
-                write_dir = self.data_write_dir / current_experiment.name
-                st.caption(f"📂 {write_dir}")
-                
-                # Create directory if it doesn't exist
-                write_dir.mkdir(parents=True, exist_ok=True)
-                
-                # List contents of write directory with selection
-                try:
-                    # Look for processed files (animations, videos, etc.)
-                    processed_files = []
-                    processed_files.extend(write_dir.glob("*.mp4"))  # Videos
-                    processed_files.extend(write_dir.glob("*.ply"))  # Point clouds
-                    processed_files.extend(write_dir.glob("*.json")) # Metadata
-                    
-                    if processed_files:
-                        st.markdown("#### Processed Files:")
-                        selected_files = []
-                        for file in sorted(processed_files):
-                            icon = "🎥" if file.suffix == ".mp4" else "📄"
-                            if st.checkbox(f"{icon} {file.name}", key=f"write_{file.name}"):
-                                selected_files.append(file)
-                        
-                        if selected_files:
-                            SessionStateManager.set('selected_write_files', selected_files)
-                    else:
-                        st.info("No processed files yet")
-                except Exception as e:
-                    st.error(f"Error reading directory: {str(e)}")
-            else:
-                st.info("Waiting for experiment selection...")
-        
-        # Show data preview for selected files
-        if SessionStateManager.has('selected_read_files') and SessionStateManager.get('selected_read_files'):
-            with st.expander("Preview Selected Data", expanded=True):
-                # Create a list to store summary stats for all files
-                all_file_stats = []
-                
-                for file in SessionStateManager.get('selected_read_files'):
-                    try:
-                        df = pd.read_csv(file)
-                        # Calculate summary statistics
-                        stats = {
-                            'File Name': file.name,
-                            'Rows': len(df),
-                            'Columns': len(df.columns),
-                            'Features': len([col for col in df.columns if col.startswith('feat_')]) // 3,
-                            'Has Time Column': 'Time (s)' in df.columns,
-                            'Memory Usage (MB)': df.memory_usage(deep=True).sum() / 1024 / 1024,
-                            'Is Baseline': file.stem.endswith('-baseline')
-                        }
-                        all_file_stats.append(stats)
-                    except Exception as e:
-                        st.error(f"Error loading {file.name}: {str(e)}")
-                
-                if all_file_stats:
-                    # Convert to DataFrame for nice display
-                    stats_df = pd.DataFrame(all_file_stats)
-                    # Reorder columns for better presentation
-                    cols = ['File Name', 'Is Baseline', 'Features', 'Rows', 'Columns', 'Has Time Column', 'Memory Usage (MB)']
-                    stats_df = stats_df[cols]
-                    # Format memory usage to 2 decimal places
-                    stats_df['Memory Usage (MB)'] = stats_df['Memory Usage (MB)'].round(2)
-                    # Display as a styled table
-                    st.table(stats_df.style.set_properties(**{
-                        'background-color': 'white',
-                        'color': 'black',
-                        'border-color': 'lightgrey'
-                    }))
-                    
-                    # Add merge functionality
-                    st.markdown("### Merge Selected Files")
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        merged_filename = st.text_input(
-                            "Output filename",
-                            value=f"merged_features_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                            help="Name for the merged CSV file"
-                        )
-                    with col2:
-                        if st.button("🔄 Merge Files", type="primary", use_container_width=True):
-                            try:
-                                # Create write directory if it doesn't exist
-                                write_dir = self.data_write_dir / current_experiment.name
-                                write_dir.mkdir(parents=True, exist_ok=True)
-                                
-                                # Read and merge all selected files
-                                merged_df = None
-                                for file in SessionStateManager.get('selected_read_files'):
-                                    df = pd.read_csv(file)
-                                    # Add source file column
-                                    df['Source_File'] = file.stem
-                                    if merged_df is None:
-                                        merged_df = df
-                                    else:
-                                        merged_df = pd.concat([merged_df, df], ignore_index=True)
-                                
-                                # Save merged file
-                                output_path = write_dir / merged_filename
-                                merged_df.to_csv(output_path, index=False)
-                                
-                                # Show success message with file info
-                                st.success(f"""
-                                ✅ Successfully merged {len(SessionStateManager.get('selected_read_files'))} files!
-                                - Output: {output_path}
-                                - Total Rows: {len(merged_df):,}
-                                - Features: {len([col for col in merged_df.columns if col.startswith('feat_')]) // 3:,}
-                                """)
-                                
-                                # Reset the write files selection to force refresh
-                                SessionStateManager.set('selected_write_files', None)
-                                # Add the new file to force the UI to update
-                                SessionStateManager.set('last_merged_file', str(output_path))
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error merging files: {str(e)}")
+        if current_experiment:
+            # List available feature analysis methods
+            feature_analysis_methods = [
+                "Cluster Analysis",
+                "Feature Extraction",
+                "Feature Comparison"
+            ]
+            
+            # Select feature analysis method
+            selected_method = st.selectbox(
+                "Select feature analysis method",
+                feature_analysis_methods,
+                index=0
+            )
+            
+            if selected_method == "Cluster Analysis":
+                ClusterAnalysisUI.render_feature_analysis()
+            elif selected_method == "Feature Extraction":
+                self.render_feature_extraction()
+            elif selected_method == "Feature Comparison":
+                self.render_feature_comparison()
+        else:
+            st.warning("Please select an experiment in the Import tab first")
     
     def render_model_training(self):
         """Render the model training interface (placeholder)."""
@@ -550,6 +517,286 @@ class StreamlitInterface:
         - Trial type prediction
         - Cross-validation
         - Model evaluation
+        """)
+    
+    def render_feature_extraction(self):
+        """Render the feature extraction interface."""
+        st.subheader("Feature Extraction Pipeline")
+        
+        # Check if we have available files
+        available_files = SessionStateManager.get('available_files_info', [])
+        if not available_files:
+            st.warning("⚠️ No files available. Please go to File Overview tab first to load experiment data.")
+            return
+        
+        # 1. FILE SELECTION (moved from File Overview)
+        with st.expander("📁 Select Files for Processing", expanded=True):
+            files_df = pd.DataFrame(available_files)
+            
+            col1, col2 = st.columns(2)
+            selected_files = []
+            
+            with col1:
+                st.markdown("**READ Files (Raw Data)**")
+                read_files = files_df[files_df['Source'] == 'READ']
+                for _, file_info in read_files.iterrows():
+                    if st.checkbox(f"📄 {file_info['File Name']}", 
+                                 key=f"feat_read_{file_info['File Name']}", 
+                                 value=True):  # Default selected
+                        selected_files.append(file_info['Path'])
+            
+            with col2:
+                st.markdown("**WRITE Files (Processed Data)**")
+                write_files = files_df[files_df['Source'] == 'WRITE']
+                for _, file_info in write_files.iterrows():
+                    icon = "📊" if file_info['Derived Features'] > 0 else "📄"
+                    if st.checkbox(f"{icon} {file_info['File Name']}", 
+                                 key=f"feat_write_{file_info['File Name']}"):
+                        selected_files.append(file_info['Path'])
+            
+            if selected_files:
+                st.success(f"✅ Selected {len(selected_files)} files for processing")
+                SessionStateManager.set('selected_analysis_files', selected_files)
+            else:
+                st.warning("⚠️ No files selected for processing")
+                SessionStateManager.set('selected_analysis_files', [])
+        
+        # 2. FEATURE SELECTION (more compact)
+        with st.expander("🎯 Landmark Selection", expanded=True):
+            col1, col2 = st.columns([3, 2])
+            
+            with col1:
+                feature_input = st.text_input(
+                    "Landmark Indices",
+                    value="1",
+                    help="Examples: '1' (nose tip), '1-10' (range), '20,34,7' (list)",
+                    placeholder="Enter landmark indices..."
+                )
+            
+            with col2:
+                available_clusters = DerivedFeatures.get_available_clusters()
+                selected_clusters = st.multiselect(
+                    "Facial Clusters",
+                    options=list(available_clusters.keys()),
+                    default=[],
+                    help="Select predefined facial regions"
+                )
+            
+            # Parse and validate selection
+            try:
+                parsed_indices = DerivedFeatures.parse_feature_selection(feature_input, selected_clusters)
+                if parsed_indices:
+                    st.info(f"📍 Selected {len(parsed_indices)} landmarks: {parsed_indices[:10]}{'...' if len(parsed_indices) > 10 else ''}")
+                else:
+                    st.error("❌ No valid landmarks selected. Please enter at least one landmark index.")
+                    parsed_indices = [1]  # Fallback to nose tip
+            except Exception as e:
+                st.error(f"❌ Error parsing selection: {str(e)}")
+                parsed_indices = [1]  # Fallback to nose tip
+        
+        # 3. PROCESSING PIPELINE (more compact)
+        with st.expander("⚙️ Processing Pipeline", expanded=False):
+            # Initialize pipeline if not exists
+            if 'processing_pipeline' not in st.session_state:
+                st.session_state.processing_pipeline = []
+            
+            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+            
+            with col1:
+                step_type = st.selectbox(
+                    "Add Step",
+                    ["none", "rolling_average", "kabsch_alignment", "kabsch_umeyama_alignment"],
+                    help="Choose processing step to add. Select 'none' for raw data extraction."
+                )
+            
+            with col2:
+                if step_type == "none":
+                    st.info("💡 No preprocessing - raw displacement extraction")
+                    param_value = None
+                    param_key = None
+                elif step_type == "rolling_average":
+                    param_value = st.slider("Window Size", 2, 10, 3)
+                    param_key = "window_size"
+                else:
+                    param_value = st.slider("Baseline Frames", 1, 20, 5)
+                    param_key = "baseline_frame_count"
+            
+            with col3:
+                if st.button("➕", help="Add pipeline step"):
+                    if step_type == "none":
+                        # Clear pipeline for raw extraction
+                        st.session_state.processing_pipeline = []
+                        st.success("🔄 Pipeline cleared for raw data extraction")
+                        st.rerun()
+                    else:
+                        new_step = {
+                            'type': step_type,
+                            'params': {param_key: param_value}
+                        }
+                        st.session_state.processing_pipeline.append(new_step)
+                        st.rerun()
+            
+            with col4:
+                if st.button("🗑️", help="Clear all steps"):
+                    st.session_state.processing_pipeline = []
+                    st.success("🧹 Pipeline cleared")
+                    st.rerun()
+            
+            # Display current pipeline status
+            if st.session_state.processing_pipeline:
+                st.markdown("**Current Pipeline:**")
+                for i, step in enumerate(st.session_state.processing_pipeline):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.text(f"{i+1}. {step['type']} - {step['params']}")
+                    with col2:
+                        if st.button("❌", key=f"remove_step_{i}", help="Remove step"):
+                            st.session_state.processing_pipeline.pop(i)
+                            st.rerun()
+            else:
+                st.info("📋 **Empty Pipeline** - Raw data will be processed without filtering or alignment")
+                st.caption("💡 Perfect for baseline displacement models")
+        
+        # 4. FEATURE CONFIGURATION (more compact)
+        with st.expander("🔬 Feature Configuration", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Displacement Features**")
+                displacement_enabled = st.checkbox("Enable", value=True, key="disp_enabled")
+                
+                if displacement_enabled:
+                    displacement_type = st.radio(
+                        "Type",
+                        ["previous_frame", "baseline"],
+                        horizontal=True,
+                        help="Frame-to-frame or baseline displacement"
+                    )
+                    
+                    baseline_count = st.slider("Baseline Frames", 1, 20, 5, key="disp_baseline")
+                else:
+                    displacement_type = "previous_frame"
+                    baseline_count = 5
+            
+            with col2:
+                st.markdown("**Quaternion Features**")
+                quaternion_enabled = st.checkbox("Enable", value=False, key="quat_enabled")
+                
+                if quaternion_enabled:
+                    quaternion_baseline = st.slider("Baseline Frames", 1, 20, 5, key="quat_baseline")
+                    st.caption("💡 Extracted from rotation matrices")
+                else:
+                    quaternion_baseline = 5
+        
+        # 5. BUILD CONFIGURATION AND EXTRACT
+        if selected_files and parsed_indices:
+            # Build the complete configuration
+            config = {
+                'selected_indices': parsed_indices,  # This was missing!
+                'displacement': {
+                    'enabled': displacement_enabled,
+                    'selected_indices': parsed_indices,  # Add here too for validation
+                    'type': displacement_type,
+                    'baseline_frame_count': baseline_count
+                },
+                'quaternion': {
+                    'enabled': quaternion_enabled,
+                    'baseline_frame_count': quaternion_baseline
+                },
+                'pipeline': st.session_state.processing_pipeline
+            }
+            
+            # Validate configuration
+            is_valid, error_msg = DerivedFeatures.validate_feature_config(config)
+            
+            if is_valid:
+                st.success("✅ Configuration is valid")
+                
+                # Extract Features Button
+                if st.button("🚀 Extract Features", type="primary", use_container_width=True):
+                    self.execute_feature_extraction_improved(config, selected_files)
+            else:
+                st.error(f"❌ Configuration Error: {error_msg}")
+                st.info("💡 **Fix:** Ensure at least one feature type is enabled and landmarks are selected.")
+        else:
+            st.warning("⚠️ Please select files and landmarks before extracting features.")
+    
+    def execute_feature_extraction_improved(self, config: Dict, selected_files: List[str]):
+        """Execute feature extraction with improved UI feedback."""
+        try:
+            progress_container = st.container()
+            
+            with progress_container:
+                st.info(f"🔄 Processing {len(selected_files)} files...")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                extracted_features = []
+                
+                for i, file_path in enumerate(selected_files):
+                    file_name = Path(file_path).name
+                    status_text.text(f"Processing {file_name}...")
+                    progress_bar.progress((i + 1) / len(selected_files))
+                    
+                    # Extract features
+                    features_df = DerivedFeatures.extract_features_from_csv(file_path, config)
+                    features_df['source_file'] = file_name
+                    extracted_features.append(features_df)
+                
+                # Combine results
+                if extracted_features:
+                    combined_features = pd.concat(extracted_features, ignore_index=True)
+                    
+                    # Save results
+                    current_experiment = SessionStateManager.get('current_experiment')
+                    write_dir = self.data_write_dir / current_experiment.name
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    
+                    output_filename = f"extracted_features_{timestamp}.csv"
+                    output_path = write_dir / output_filename
+                    combined_features.to_csv(output_path, index=False)
+                    
+                    # Clear progress and show results
+                    progress_container.empty()
+                    
+                    st.balloons()
+                    st.success(f"🎉 Feature extraction completed successfully!")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Files Processed", len(selected_files))
+                    with col2:
+                        st.metric("Total Frames", len(combined_features))
+                    with col3:
+                        feature_cols = [col for col in combined_features.columns 
+                                      if col.startswith('displacement_') or col.startswith('quaternion_')]
+                        st.metric("Derived Features", len(feature_cols))
+                    
+                    st.info(f"📁 Saved: `{output_filename}`")
+                    
+                    # Show preview
+                    with st.expander("📊 Preview Results", expanded=False):
+                        st.dataframe(combined_features.head(10), use_container_width=True)
+                        
+                        if feature_cols:
+                            st.markdown("**Extracted Features:**")
+                            st.code(", ".join(feature_cols))
+                
+        except Exception as e:
+            st.error(f"❌ Extraction failed: {str(e)}")
+            with st.expander("🔍 Error Details"):
+                import traceback
+                st.code(traceback.format_exc())
+    
+    def render_feature_comparison(self):
+        """Render the feature comparison interface."""
+        st.subheader("Feature Comparison")
+        st.info("🚧 Feature comparison coming soon...")
+        st.markdown("""
+        Planned features:
+        - Side-by-side feature visualization
+        - Statistical comparisons
+        - Correlation analysis
         """)
 
 
