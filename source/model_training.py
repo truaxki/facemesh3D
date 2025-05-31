@@ -364,9 +364,31 @@ class ModelTraining:
         """
         fig, ax = plt.subplots(figsize=(8, 6))
         
-        # Create heatmap
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                   xticklabels=class_names, yticklabels=class_names, ax=ax)
+        if HAS_SEABORN:
+            # Use seaborn heatmap if available
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                       xticklabels=class_names, yticklabels=class_names, ax=ax)
+        else:
+            # Fallback to matplotlib
+            im = ax.imshow(cm, interpolation='nearest', cmap='Blues')
+            ax.figure.colorbar(im, ax=ax)
+            
+            # Set ticks and labels
+            ax.set(xticks=np.arange(cm.shape[1]),
+                   yticks=np.arange(cm.shape[0]),
+                   xticklabels=class_names,
+                   yticklabels=class_names)
+            
+            # Rotate the tick labels and set their alignment
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                     rotation_mode="anchor")
+            
+            # Add text annotations
+            for i in range(cm.shape[0]):
+                for j in range(cm.shape[1]):
+                    text = ax.text(j, i, format(cm[i, j], 'd'),
+                                 ha="center", va="center",
+                                 color="white" if cm[i, j] > cm.max() / 2 else "black")
         
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.set_ylabel('True Label', fontsize=12)
@@ -437,7 +459,7 @@ class ModelTraining:
             subset_matrix = correlation_matrix[:-1, :-1]  # Exclude target column
             subset_names = display_names if len(feature_names) <= 20 else [f"F{i}" for i in range(len(feature_names))]
         
-        im = ax2.imshow(subset_matrix, cmap='RdBu_r', vmin=-1, vmax=1)
+        im = ax2.imshow(subset_matrix, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
         ax2.set_xticks(range(len(subset_names)))
         ax2.set_yticks(range(len(subset_names)))
         ax2.set_xticklabels(subset_names, rotation=45, ha='right', fontsize=8)
