@@ -460,13 +460,87 @@ class StreamlitInterface:
         # Show data preview for selected files
         if SessionStateManager.has('selected_read_files') and SessionStateManager.get('selected_read_files'):
             with st.expander("Preview Selected Data", expanded=True):
+                # Create a list to store summary stats for all files
+                all_file_stats = []
+                
                 for file in SessionStateManager.get('selected_read_files'):
-                    st.markdown(f"#### {file.name}")
                     try:
                         df = pd.read_csv(file)
-                        DataPreview.show_csv_preview(df, file)
+                        # Calculate summary statistics
+                        stats = {
+                            'File Name': file.name,
+                            'Rows': len(df),
+                            'Columns': len(df.columns),
+                            'Features': len([col for col in df.columns if col.startswith('feat_')]) // 3,
+                            'Has Time Column': 'Time (s)' in df.columns,
+                            'Memory Usage (MB)': df.memory_usage(deep=True).sum() / 1024 / 1024,
+                            'Is Baseline': file.stem.endswith('-baseline')
+                        }
+                        all_file_stats.append(stats)
                     except Exception as e:
                         st.error(f"Error loading {file.name}: {str(e)}")
+                
+                if all_file_stats:
+                    # Convert to DataFrame for nice display
+                    stats_df = pd.DataFrame(all_file_stats)
+                    # Reorder columns for better presentation
+                    cols = ['File Name', 'Is Baseline', 'Features', 'Rows', 'Columns', 'Has Time Column', 'Memory Usage (MB)']
+                    stats_df = stats_df[cols]
+                    # Format memory usage to 2 decimal places
+                    stats_df['Memory Usage (MB)'] = stats_df['Memory Usage (MB)'].round(2)
+                    # Display as a styled table
+                    st.table(stats_df.style.set_properties(**{
+                        'background-color': 'white',
+                        'color': 'black',
+                        'border-color': 'lightgrey'
+                    }))
+                    
+                    # Add merge functionality
+                    st.markdown("### Merge Selected Files")
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        merged_filename = st.text_input(
+                            "Output filename",
+                            value=f"merged_features_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                            help="Name for the merged CSV file"
+                        )
+                    with col2:
+                        if st.button("🔄 Merge Files", type="primary", use_container_width=True):
+                            try:
+                                # Create write directory if it doesn't exist
+                                write_dir = self.data_write_dir / current_experiment.name
+                                write_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                # Read and merge all selected files
+                                merged_df = None
+                                for file in SessionStateManager.get('selected_read_files'):
+                                    df = pd.read_csv(file)
+                                    # Add source file column
+                                    df['Source_File'] = file.stem
+                                    if merged_df is None:
+                                        merged_df = df
+                                    else:
+                                        merged_df = pd.concat([merged_df, df], ignore_index=True)
+                                
+                                # Save merged file
+                                output_path = write_dir / merged_filename
+                                merged_df.to_csv(output_path, index=False)
+                                
+                                # Show success message with file info
+                                st.success(f"""
+                                ✅ Successfully merged {len(SessionStateManager.get('selected_read_files'))} files!
+                                - Output: {output_path}
+                                - Total Rows: {len(merged_df):,}
+                                - Features: {len([col for col in merged_df.columns if col.startswith('feat_')]) // 3:,}
+                                """)
+                                
+                                # Reset the write files selection to force refresh
+                                SessionStateManager.set('selected_write_files', None)
+                                # Add the new file to force the UI to update
+                                SessionStateManager.set('last_merged_file', str(output_path))
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error merging files: {str(e)}")
     
     def render_model_training(self):
         """Render the model training interface (placeholder)."""
